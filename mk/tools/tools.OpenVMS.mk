@@ -46,6 +46,9 @@ TOOLS_PLATFORM.mktemp?=		/bin/mktemp
 TOOLS_PLATFORM.mv?=		/bin/mv
 TOOLS_PLATFORM.nice?=		/bin/nice
 TOOLS_PLATFORM.patch?=		/bin/patch
+# The VSI kit supplies a native Perl used by bootstrap tools and by packages
+# that need to translate GNV paths before building a native VMS image.
+TOOLS_PLATFORM.perl?=		/PERL_ROOT/000000/PERL.EXE
 TOOLS_PLATFORM.printf?=		/bin/printf
 TOOLS_PLATFORM.pwd?=		/bin/pwd
 TOOLS_PLATFORM.readlink?=	/bin/readlink

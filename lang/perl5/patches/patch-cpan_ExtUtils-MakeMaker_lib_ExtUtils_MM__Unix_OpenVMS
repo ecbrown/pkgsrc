@@ -1,0 +1,49 @@
+$NetBSD$
+
+Teach ExtUtils::MakeMaker's core VMS builds about generated source/object
+dependencies and keep recursive Makefile commands relative to PERL_SRC.
+
+--- cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Unix.pm.orig
++++ cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Unix.pm
+@@ -2196,6 +2196,12 @@ sub init_PERL {
+         $self->{$perl.'RUNINST'} = '$('.$perl.$inst_lib_paths;
+     }
+ 
++    if ($Is{VMS} && $self->{PERL_CORE}) {
++        $self->{PERL} = 'MCR $(PERL_SRC)miniperl.exe';
++        $self->{FULLPERL} = 'MCR $(PERL_SRC)perl.exe';
++        $self->{ABSPERL} = '$(PERL)';
++    }
++
+     return 1;
+ }
+ 
+@@ -4031,6 +4037,28 @@ sub top_targets {
+ $(O_FILES) : $(H_FILES)
+ ' if @{$self->{O_FILES} || []} && @{$self->{H} || []};
+ 
++    if ($Is{VMS} && @{$self->{O_FILES} || []}) {
++        my %source_for;
++        for my $src (@{$self->{C} || []}) {
++            (my $obj = $src) =~ s/\.c(pp|xx|c)?\z/$self->{OBJ_EXT}/i;
++            $source_for{$obj} = $src;
++        }
++        for my $obj (@{$self->{O_FILES}}) {
++            unless ($source_for{$obj}) {
++                (my $guess = $obj) =~ s/\Q$self->{OBJ_EXT}\E$/.c/i;
++                $source_for{$obj} = $guess;
++            }
++            push @m, "$obj : $source_for{$obj}\n"
++                if $source_for{$obj};
++        }
++    }
++
++    if ($Is{VMS} && $self->{XS}) {
++        while (my ($xs, $c) = each %{$self->{XS}}) {
++            push @m, "$c : $xs\n";
++        }
++    }
++
+     push @m, q{
+ help :
+ 	perldoc ExtUtils::MakeMaker

@@ -50,11 +50,44 @@ PERL5_API_VERS_cmd=	\
 
 .include "../../mk/compiler.mk"
 
+.if ${OPSYS} == "OpenVMS"
+# OpenVMS ships a native Configure.com and MMS description.  The POSIX
+# Configure script cannot create a usable VMS shareable image.
+HAS_CONFIGURE=		yes
+CONFIGURE_SCRIPT=	./configure.com
+MAKE_FILE=		Descrip.MMS
+PATCH_ARGS=		-d ${WRKDIR}/${DISTNAME} --forward --quiet \
+				-E ${PATCH_STRIP:Q}
+PATCH_DIST_ARGS=	-d ${WRKDIR}/${DISTNAME} --forward --quiet \
+				-E ${PATCH_DIST_STRIP:Q}
+
+# Convert pkgsrc's GNV staging path to the VMS directory specification
+# expected by Configure.com.  The VSI kit provides this small native Perl
+# utility even before this package is built.
+PERL5_VMS_NATIVE?=	/PERL_ROOT/000000/PERL.EXE
+PERL5_VMS_PREFIX_CMD=	${PERL5_VMS_NATIVE:Q} -MVMS::Filespec -e \
+		'print VMS::Filespec::vmspath("${DESTDIR}${PREFIX}")'
+PERL5_VMS_PREFIX=	${PERL5_VMS_PREFIX_CMD:sh}
+CONFIGURE_ARGS.OpenVMS+=	-Dprefix=${PERL5_VMS_PREFIX}
+
+do-configure:
+	${RUN} cd ${WRKSRC} && /bin/dcl '@configure.com "-des" ${CONFIGURE_ARGS}'
+
+do-build:
+	${RUN} cd ${WRKSRC} && /bin/dcl 'MMS all'
+
+do-install:
+	${RUN} cd ${WRKSRC} && /bin/dcl 'MMS install'
+
+do-test:
+	${RUN} cd ${WRKSRC} && /bin/dcl 'MMS test'
+.else
 HAS_CONFIGURE=		yes
 CONFIGURE_SCRIPT=	./Configure
 CONFIGURE_ARGS+=	-sde
 CONFIGURE_ARGS+=	-Dldflags=${LDFLAGS:Q}
 MAKE_ENV+=		LC_ALL="C"
+.endif
 LDFLAGS.QNX+=		-lm
 
 CONFIGURE_ARGS.SunOS+=	-Aundef:csh
@@ -172,7 +205,9 @@ SYSLIBPATH.SCO_SV=	/usr/lib
 SYSLIBPATH=		${SYSLIBPATH.${OPSYS}:U${COMPILER_LIB_DIRS}}
 SUBST_VARS.policysh+=	SYSLIBPATH
 
+.if ${OPSYS} != "OpenVMS"
 .include "../../mk/dlopen.buildlink3.mk"
+.endif
 .include "options.mk"
 
 # Replace our perl as the interpreter
@@ -227,12 +262,22 @@ PERL5_PACKLIST_DIR_cmd=	. ${WRKSRC}/config.sh;	echo $$installarchlib
 PERL5_PACKLIST_DIR=	${PERL5_PACKLIST_DIR_cmd:sh}
 PERL5_PACKLIST=		.packlist
 PERL5_PACKLIST_DESTDIR=	no
+.if ${OPSYS} == "OpenVMS"
+# Configure.com uses a logical /perl_root in .packlist.  Keep the packlist
+# itself at the pkgsrc staging path and rewrite those logical entries to the
+# eventual package prefix before pkgsrc generates the PLIST.
+PERL5_PACKLIST_DIR=	${PREFIX}/lib/VMS_x86_64/${PERL5_API_VERS:S/./_/g}
+.endif
 FILES_SUBST+=		PERL5_COMMENT=\#
 FILES_SUBST+=		PERL5_PACKLIST=
 
 .PHONY: perl5-post-install
 post-install: perl5-post-install
 perl5-post-install:
+.if ${OPSYS} == "OpenVMS"
+	${INSTALL_DATA_DIR} ${DESTDIR}${PREFIX}/bin
+	${LN} -sf ../perl.exe ${DESTDIR}${PREFIX}/bin/perl
+.endif
 	${RUN}if ${TEST} -x ${DESTDIR}${PREFIX}/bin/a2p; then		\
 		strip ${DESTDIR}${PREFIX}/bin/a2p;			\
 	fi
@@ -248,6 +293,20 @@ perl5-post-install:
 		${DESTDIR}${PREFIX}/${PKGMANDIR}/man1/perllink.1
 .if ${OPSYS} == "Haiku"
 	${CHMOD} a+x ${DESTDIR}${PREFIX}/bin/perl
+.endif
+
+.if ${OPSYS} == "OpenVMS"
+post-install: perl5-packlist-vms
+perl-packlist: perl5-packlist-vms
+.PHONY: perl5-packlist-vms
+perl5-packlist-vms:
+	${RUN} \
+	packlist=${DESTDIR}${PERL5_PACKLIST_DIR}/${PERL5_PACKLIST}; \
+	${SED} -e 's|^/perl_root|${PREFIX}|' \
+		-e '/\/pods\/perltoc\.pod /d' \
+		-e '/\/pods\/perluniprops\.pod /d' \
+		"$${packlist}" > "$${packlist}.new" && \
+	${MV} -f "$${packlist}.new" "$${packlist}"
 .endif
 
 .include "packlist.mk"

@@ -1,0 +1,14 @@
+$NetBSD$
+
+Scalar::List::Utils includes ppport.h but is missing from the upstream
+distribution list used to copy that header into extension directories.
+
+--- mkppport.lst.orig
++++ mkppport.lst
+@@ -7,6 +7,7 @@
+ 
+ cpan/DB_File
+ cpan/IPC-SysV
++cpan/Scalar-List-Utils
+ cpan/Win32API-File
+ dist/Data-Dumper
