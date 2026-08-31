@@ -12,3 +12,4 @@ distribution list used to copy that header into extension directories.
 +cpan/Scalar-List-Utils
  cpan/Win32API-File
  dist/Data-Dumper
+ dist/Devel-PPPort
