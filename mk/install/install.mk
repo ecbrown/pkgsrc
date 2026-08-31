@@ -452,10 +452,14 @@ _DOC_COMPRESS=								\
 
 .PHONY: install-doc-handling
 install-doc-handling: plist
+.if ${OPSYS} == "OpenVMS"
+	@${STEP_MSG} "Skipping unsupported automatic manual page handling"
+.else
 	${RUN}								\
 	${STEP_MSG} "Automatic manual page handling";			\
 	${EGREP} ${_PLIST_REGEXP.man:Q} ${_PLIST_NOKEYWORDS}		\
 	| ${_DOC_COMPRESS}
+.endif
 
 privileged-install-hook: .PHONY
 	@${DO_NADA}

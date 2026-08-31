@@ -50,6 +50,14 @@
 #
 ######################################################################
 
+function print_error(message)
+{
+	if (ENVIRON["OPSYS"] == "OpenVMS")
+		print message > "/dev/stderr"
+	else
+		print message | ERRCAT
+}
+
 BEGIN {
 	CAT = ENVIRON["CAT"] ? ENVIRON["CAT"] : "cat"
 	PKG_INFO = ENVIRON["PKG_INFO"] ? ENVIRON["PKG_INFO"] : "pkg_info"
@@ -60,7 +68,7 @@ BEGIN {
 
 	while (getline == 1) {
 		if (NF != 3) {
-			print "ERROR: [" PROGNAME "] invalid dependency line " $0 | ERRCAT
+			print_error("ERROR: [" PROGNAME "] invalid dependency line " $0)
 			exit 1
 		}
 		if ($1 != "full" &&
@@ -69,12 +77,22 @@ BEGIN {
 		    $1 != "indirect-build" &&
 		    $1 != "tool" &&
 		    $1 != "bootstrap") {
-			print "ERROR: [" PROGNAME "] invalid dependency line " $0 | ERRCAT
+			print_error("ERROR: [" PROGNAME "] invalid dependency line " $0)
 			exit 1
+		}
+		if (ENVIRON["OPSYS"] == "OpenVMS") {
+			openvms_line[++openvms_lines] = $0
+			continue
 		}
 		type[NR] = $1
 		pattern[NR] = $2
 		pkg[NR] = $3
+	}
+	if (ENVIRON["OPSYS"] == "OpenVMS") {
+		# See reduce-depends.awk: reduction is optional on OpenVMS.
+		for (i = 1; i <= openvms_lines; i++)
+			print openvms_line[i]
+		exit
 	}
 	lines = NR + 1
 

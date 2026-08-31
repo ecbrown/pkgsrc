@@ -1764,10 +1764,18 @@ Cmd_Argv(const char *cmd, size_t cmd_len, const char **av, size_t avsz,
 char *
 Cmd_Exec(const char *cmd, char **error)
 {
+#ifdef __VMS
+	FILE *output_stream;
+	int cmd_fd;
+	char output_file[MAXPATHLEN + 5];
+	char redirect[MAXPATHLEN + 16];
+	char system_cmd[MAXPATHLEN * 2 + 2];
+#else
 	const char *args[4];	/* Arguments for invoking the shell */
 	int pipefds[2];
 	int cpid;		/* Child PID */
 	int pid;		/* PID from wait() */
+#endif
 	int status;		/* command exit status */
 	Buffer buf;		/* buffer to store the result */
 	ssize_t bytes_read;
@@ -1778,6 +1786,62 @@ Cmd_Exec(const char *cmd, char **error)
 
 	DEBUG1(VAR, "Capturing the output of command \"%s\"\n", cmd);
 
+#ifdef __VMS
+	/*
+	 * The OpenVMS C RTL implements vfork as a macro around setjmp and
+	 * spawning.  Changing file descriptors between vfork and execv affects
+	 * the parent process, so the usual pipe/vfork sequence below cannot be
+	 * used.  Run the shell synchronously and capture its output in a regular
+	 * file instead.  Relative filenames avoid an extra round of DCL pathname
+	 * translation.
+	 */
+	if (shellPath == NULL)
+		Shell_Init();
+	snprintf(cmd_file, sizeof(cmd_file), "bmake_cmd_XXXXXX");
+	cmd_fd = mkstemp(cmd_file);
+	if (cmd_fd < 0 || snprintf(output_file, sizeof(output_file), "%s.out",
+	    cmd_file) >= (int)sizeof(output_file) ||
+	    snprintf(redirect, sizeof(redirect), "exec > %s\n", output_file) >=
+	    (int)sizeof(redirect) ||
+	    write(cmd_fd, redirect, strlen(redirect)) !=
+	    (ssize_t)strlen(redirect) ||
+	    write(cmd_fd, cmd, strlen(cmd)) != (ssize_t)strlen(cmd) ||
+	    write(cmd_fd, "\n", 1) != 1) {
+		if (cmd_fd >= 0)
+			close(cmd_fd);
+		*error = str_concat3("Couldn't create command file for \"", cmd,
+		    "\"");
+		return bmake_strdup("");
+	}
+	close(cmd_fd);
+	if (snprintf(system_cmd, sizeof(system_cmd), "%s %s", shellName,
+	    cmd_file) >= (int)sizeof(system_cmd)) {
+		unlink(cmd_file);
+		*error = str_concat3("Command path too long for \"", cmd, "\"");
+		return bmake_strdup("");
+	}
+	DEBUG1(VAR, "Capturing command through \"%s\"\n", system_cmd);
+	Var_ReexportVars(SCOPE_GLOBAL);
+	status = system(system_cmd);
+
+	saved_errno = 0;
+	Buf_Init(&buf);
+	output_stream = fopen(output_file, "r");
+	if (output_stream == NULL)
+		saved_errno = errno;
+	else {
+		do {
+			char result[BUFSIZ];
+			bytes_read = (ssize_t)fread(result, 1, sizeof(result),
+			    output_stream);
+			if (bytes_read > 0)
+				Buf_AddBytes(&buf, result, (size_t)bytes_read);
+		} while (bytes_read > 0);
+		if (ferror(output_stream))
+			saved_errno = errno;
+		fclose(output_stream);
+	}
+#else
 	if (Cmd_Argv(cmd, 0, args, 4, cmd_file, sizeof(cmd_file), false, false) < 0
 	    || pipe(pipefds) == -1) {
 		*error = str_concat3(
@@ -1820,6 +1884,7 @@ Cmd_Exec(const char *cmd, char **error)
 
 	while ((pid = waitpid(cpid, &status, 0)) != cpid && pid >= 0)
 		JobReapChild(pid, status, false);
+#endif
 
 	if (Buf_EndsWith(&buf, '\n'))
 		buf.data[buf.len - 1] = '\0';
@@ -1829,7 +1894,9 @@ Cmd_Exec(const char *cmd, char **error)
 		if (*p == '\n')
 			*p = ' ';
 
-	if (WIFSIGNALED(status))
+	if (status == -1)
+		*error = str_concat3("Couldn't wait for \"", cmd, "\"");
+	else if (WIFSIGNALED(status))
 		*error = str_concat3("\"", cmd, "\" exited on a signal");
 	else if (WEXITSTATUS(status) != 0) {
 		Buffer errBuf;
@@ -1846,6 +1913,10 @@ Cmd_Exec(const char *cmd, char **error)
 		*error = NULL;
 	if (cmd_file[0] != '\0')
 		unlink(cmd_file);
+#ifdef __VMS
+	if (output_file[0] != '\0')
+		unlink(output_file);
+#endif
 	return output;
 }
 

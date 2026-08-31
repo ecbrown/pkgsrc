@@ -3,4 +3,8 @@ $NetBSD: distinfo,v 1.58 2026/04/09 20:26:18 wiz Exp $
 BLAKE2s (m4-1.4.21.tar.gz) = 99bf52b43b7ff479a4c99bca41186b5983448abd940054682a2646f94855ce89
 SHA512 (m4-1.4.21.tar.gz) = 4d573245d31e14a1b2856abf7cd16f82ec01036956bb2c9ee09e6d9d3fcca518cf77d6864c915d4defa07771bf8503241017b37ce9027dcf4fafdd0fb20db582
 Size (m4-1.4.21.tar.gz) = 3558201 bytes
+SHA1 (patch-lib_assert.in.h) = bbab95f293f9d5877169be8fae24f78080bd29f5
+SHA1 (patch-lib_getprogname.c) = a0ffe3b6502fb10535e2d73dbe563d3484fcafdc
+SHA1 (patch-lib_malloc_scratch__buffer.h) = ed06596282bc8e387bdbb5f33486885fe1d6a62e
 SHA1 (patch-lib_sigsegv.c) = d773bc9690261b1749cceda8396536384f662665
+SHA1 (patch-lib_spawni.c) = 5193e1bb10258473680d777a8486fd01bf6f0341

@@ -458,7 +458,16 @@ case $progpath in
   [\\/]*|[A-Za-z]:\\*) ;;
   *[\\/]*)
      progdir=`$ECHO "$progpath" |$SED "$sed_dirname"`
-     progdir=`cd "$progdir" && pwd`
+     case $host_os:$progdir in
+	vms:.)
+	  # A command-substitution subshell in GNV Bash can reject `cd .`,
+	  # leaving progpath as /libtool and breaking libtool reexecution.
+	  progdir=`pwd`
+	  ;;
+	*)
+	  progdir=`cd "$progdir" && pwd`
+	  ;;
+     esac
      progpath=$progdir/$progname
      ;;
   *)
@@ -673,6 +682,13 @@ else
   }
 fi
 
+
+# GNV Bash supports the XSI parameter expansions below, but libtool's normal
+# runtime probe happens after these functions are defined.  Avoid spawning a
+# sed pipeline per object: sufficiently large archives otherwise exhaust GNV.
+case $host_os in
+  vms*) _G_HAVE_XSI_OPS=yes ;;
+esac
 
 # func_basename FILE
 # ------------------
@@ -11297,7 +11313,17 @@ relink_command=\"$relink_command\""
 
       # Do a symbolic link so that the libtool archive can be found in
       # LD_LIBRARY_PATH before the program is installed.
-      func_show_eval '( cd "$output_objdir" && $RM "$outputname" && $LN_S "../$outputname" "$outputname" )' 'exit $?'
+      case $host_os in
+	vms*)
+	  # GNV can transiently reject the freshly populated .libs directory
+	  # when this operation changes into it.  Create the relative link from
+	  # the parent directory instead.
+	  func_show_eval '$RM "$output_objdir/$outputname" && $LN_S "../$outputname" "$output_objdir/$outputname"' 'exit $?'
+	  ;;
+	*)
+	  func_show_eval '( cd "$output_objdir" && $RM "$outputname" && $LN_S "../$outputname" "$outputname" )' 'exit $?'
+	  ;;
+      esac
       ;;
     esac
     exit $EXIT_SUCCESS

@@ -12,7 +12,7 @@ AC_CHECK_HEADERS([err.h stdint.h termios.h sysexists.h])
 
 AC_TYPE_INTMAX_T
 
-AC_CHECK_FUNCS([getpass getpassphrase setproctitle])
+AC_CHECK_FUNCS([getpass getpassphrase setproctitle tcgetattr tcsetattr])
 AC_CHECK_LIB(socket, socket)
 AC_CHECK_LIB(nsl, gethostbyname)
 AC_CHECK_LIB(crypto, X509_get_issuer_name)

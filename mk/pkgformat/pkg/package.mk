@@ -66,6 +66,16 @@ ${STAGE_PKGFILE}: ${_CONTENTS_TARGETS}
 .endif
 
 .if ${PKGFILE} != ${STAGE_PKGFILE}
+.if ${OPSYS} == "OpenVMS"
+# On OpenVMS, GNV ln is forced to create symbolic links.  A repository symlink
+# back into WRKDIR would become dangling at clean time, so preserve a real copy.
+${PKGFILE}: ${STAGE_PKGFILE}
+	${RUN}								\
+	${STEP_MSG} "Creating binary package ${.TARGET}";		\
+	${TEST} -d ${.TARGET:H} || ${MKDIR} ${.TARGET:H};		\
+	${CP} -pf ${STAGE_PKGFILE} ${PKGFILE} 2>/dev/null ||		\
+		${CP} -f ${STAGE_PKGFILE} ${PKGFILE}
+.else
 ${PKGFILE}: ${STAGE_PKGFILE}
 	${RUN}								\
 	${STEP_MSG} "Creating binary package ${.TARGET}";		\
@@ -73,6 +83,7 @@ ${PKGFILE}: ${STAGE_PKGFILE}
 	${LN} -f ${STAGE_PKGFILE} ${PKGFILE} 2>/dev/null ||		\
 		${CP} -pf ${STAGE_PKGFILE} ${PKGFILE} 2>/dev/null ||	\
 		${CP} -f ${STAGE_PKGFILE} ${PKGFILE}
+.endif
 .endif
 
 ######################################################################

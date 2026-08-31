@@ -97,6 +97,10 @@ extern char **environ;
 __RCSID("$NetBSD: fexec.c,v 1.14 2025/02/18 12:55:11 wiz Exp $");
 
 static int	vfcexec(const char *, int, const char *, va_list);
+#ifdef __VMS
+static int	vfcexec_script(const char *, const char *, va_list);
+static int	pfcexec_script(const char *, const char **);
+#endif
 
 /*
  * fork, then change current working directory to path and
@@ -213,6 +217,104 @@ vfcexec(const char *path, int skipempty, const char *arg, va_list ap)
 	return retval;
 }
 
+#ifdef __VMS
+/*
+ * The OpenVMS C RTL does not interpret a script's #! line when execvp(3) is
+ * called after vfork(2).  It also implements exec by spawning and waiting,
+ * which deadlocks when the caller is a vfork child.  Package +INSTALL and
+ * +DEINSTALL files are shell scripts, so invoke them explicitly with the GNV
+ * Bash required by bootstrap, without entering the vfork path.
+ */
+static int
+pfcexec_script(const char *path, const char **argv)
+{
+	char *cmd, *cp, *prevcwd;
+	const char **arg;
+	const char *src;
+	size_t cmd_size;
+	int result, saved_errno;
+
+	/*
+	 * system(3) invokes DCL on OpenVMS.  Quote Bash arguments using DCL's
+	 * doubled-double-quote convention, preserving case and whitespace.
+	 */
+	cmd_size = sizeof("BASH");
+	for (arg = argv + 1; *arg != NULL; ++arg) {
+		cmd_size += strlen(*arg) + 3;
+		for (src = *arg; *src != '\0'; ++src) {
+			if (*src == '"')
+				++cmd_size;
+		}
+	}
+
+	cmd = xmalloc(cmd_size);
+	memcpy(cmd, "BASH", sizeof("BASH") - 1);
+	cp = cmd + sizeof("BASH") - 1;
+	for (arg = argv + 1; *arg != NULL; ++arg) {
+		*cp++ = ' ';
+		*cp++ = '"';
+		for (src = *arg; *src != '\0'; ++src) {
+			*cp++ = *src;
+			if (*src == '"')
+				*cp++ = '"';
+		}
+		*cp++ = '"';
+	}
+	*cp = '\0';
+
+	prevcwd = NULL;
+	if (path != NULL) {
+		prevcwd = getcwd(NULL, 4096, 0);
+		if (prevcwd == NULL || chdir(path) < 0) {
+			free(prevcwd);
+			free(cmd);
+			return -1;
+		}
+	}
+
+	errno = 0;
+	result = system(cmd);
+	saved_errno = errno;
+	if (prevcwd != NULL && chdir(prevcwd) < 0)
+		result = -1;
+	else
+		errno = saved_errno;
+
+	free(prevcwd);
+	free(cmd);
+	return result;
+}
+
+static int
+vfcexec_script(const char *path, const char *script, va_list ap)
+{
+	const char **argv;
+	const char *arg;
+	size_t argv_size, argc;
+	int retval;
+
+	argv_size = 16;
+	argv = xcalloc(argv_size, sizeof(*argv));
+
+	argv[0] = "/bin/bash";
+	argv[1] = script;
+	argc = 2;
+
+	do {
+		if (argc == argv_size) {
+			argv_size *= 2;
+			argv = xrealloc(argv, argv_size * sizeof(*argv));
+		}
+		arg = va_arg(ap, const char *);
+		argv[argc++] = arg;
+	} while (arg != NULL);
+
+	retval = pfcexec_script(path, argv);
+	free(argv);
+	return retval;
+}
+#endif
+
 int
 fexec(const char *arg, ...)
 {
@@ -246,7 +348,11 @@ fcexec(const char *path, const char *arg, ...)
 	int	result;
 
 	va_start(ap, arg);
+#ifdef __VMS
+	result = vfcexec_script(path, arg, ap);
+#else
 	result = vfcexec(path, 0, arg, ap);
+#endif
 	va_end(ap);
 
 	return result;

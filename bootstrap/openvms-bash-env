@@ -1,0 +1,57 @@
+# Remember this file even when Autoconf temporarily assigns BASH_ENV=/dev/null
+# before re-executing CONFIG_SHELL.
+OPENVMS_BASH_ENV=${OPENVMS_BASH_ENV:-${BASH_SOURCE[0]}}
+export OPENVMS_BASH_ENV
+
+# GNV Bash 4.4 cannot resolve even "." after Autoconf enables POSIX mode.
+# Intercept the first operation in each shell, then remove the function so
+# later `set` calls retain their special-builtin positional-parameter behavior.
+set ()
+{
+	if test "$#" -eq 2 && test "x$1" = x-o && test "x$2" = xposix; then
+		unset -f set
+		return 0
+	fi
+	builtin set "$@"
+}
+export -f set
+
+# Autoconf normally removes BASH_ENV once its shell checks have run.  Retain
+# this controlled file so each generated child script gets its own one-shot
+# `set -o posix` guard.  Delegate every other unset operation unchanged.
+unset ()
+{
+	local _arg
+	local -a _args=()
+	for _arg in "$@"; do
+		if builtin test "x$_arg" = xBASH_ENV; then
+			BASH_ENV=$OPENVMS_BASH_ENV
+			export BASH_ENV
+		else
+			_args+=("$_arg")
+		fi
+	done
+	if builtin test "${#_args[@]}" -gt 0; then
+		builtin unset "${_args[@]}"
+	fi
+}
+export -f unset
+
+# GNV exposes OpenVMS executables as regular files without Unix execute bits.
+# Autoconf's program lookup consequently rejects every command in PATH, and
+# its cache update check similarly rejects writable regular files.  Map those
+# exact two-argument tests to the OpenVMS-relevant regular-file test while
+# leaving all other uses of test unchanged.
+test ()
+{
+	if builtin test "$#" -eq 2 &&
+	    { builtin test "x$1" = x-x || builtin test "x$1" = x-w; }; then
+		# Preserve the native result for directories (Autoconf requires
+		# `test -x /` to succeed), but accept every regular file for
+		# the executable and writable probes above.
+		builtin test -f "$2" || builtin test "$1" "$2"
+		return $?
+	fi
+	builtin test "$@"
+}
+export -f test

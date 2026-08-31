@@ -31,6 +31,7 @@ _CHECKSUM_CMD=	${TOOLS_PLATFORM.mktool} checksum
 _CHECKSUM_CMD=								\
 	${PKGSRC_SETENV}						\
 	    DIGEST=${TOOLS_DIGEST:Q} SED=${TOOLS_CMDLINE_SED:Q}		\
+	    CHECKSUM_SHELL=${OPSYS:MOpenVMS:S/OpenVMS/BASH/:Q}		\
 	    ${AWK} -f ${PKGSRCDIR}/mk/checksum/checksum.awk --
 .endif
 

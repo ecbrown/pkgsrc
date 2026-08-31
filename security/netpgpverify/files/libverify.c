@@ -301,11 +301,27 @@ struct pgpv_cursor_t {
 #endif
 
 #ifndef __dead
+#ifdef __VMS
+#define __dead
+#else
 #define __dead				__attribute__((__noreturn__))
+#endif
 #endif
 
 #ifndef __printflike
+#ifdef __VMS
+#define __printflike(n, m)
+#else
 #define __printflike(n, m)		__attribute__((format(printf,n,m)))
+#endif
+#endif
+
+#ifndef MAXPATHLEN
+#ifdef PATH_MAX
+#define MAXPATHLEN	PATH_MAX
+#else
+#define MAXPATHLEN	1024
+#endif
 #endif
 
 #ifndef MIN
@@ -710,7 +726,7 @@ fmt_binary(obuf_t *obuf, const uint8_t *bin, unsigned len)
 	char		newbuf[3];
 
 	for (i = 0 ; i < len ; i++) {
-		snprintf(newbuf, sizeof(newbuf), "%02hhx", bin[i]);
+		snprintf(newbuf, sizeof(newbuf), "%02x", (unsigned)bin[i]);
 		if (!obuf_add_mem(obuf, newbuf, 2)) {
 			return 0;
 		}
@@ -856,8 +872,8 @@ fmt_fingerprint(obuf_t *obuf, pgpv_fingerprint_t *fingerprint, const char *name)
 		return 0;
 	}
 	for (i = 0 ; i < fingerprint->len ; i++) {
-		cc = snprintf(newbuf, sizeof(newbuf), "%02hhx",
-			fingerprint->v[i]);
+		cc = snprintf(newbuf, sizeof(newbuf), "%02x",
+		    (unsigned)fingerprint->v[i]);
 		if (!obuf_add_mem(obuf, newbuf, cc)) {
 			return 0;
 		}

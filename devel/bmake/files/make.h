@@ -1088,7 +1088,7 @@ void AppendWords(StringList *, char *);
 void GNode_FprintDetails(FILE *, const char *, const GNode *, const char *);
 bool GNode_ShouldExecute(GNode *gn) MAKE_ATTR_USE;
 
-#ifndef HAVE_STRLCPY
+#if !defined(HAVE_STRLCPY) || defined(__VMS)
 size_t strlcpy(char *, const char *, size_t);
 #endif
 
@@ -1178,7 +1178,7 @@ UNCONST(const void *ptr)
 #define PATH_MAX	MAXPATHLEN
 #endif
 
-#if defined(SYSV)
+#if defined(SYSV) || defined(__VMS)
 #define KILLPG(pid, sig) kill(-(pid), (sig))
 #else
 #define KILLPG(pid, sig) killpg((pid), (sig))

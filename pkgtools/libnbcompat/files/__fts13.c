@@ -128,7 +128,12 @@ static int	 fts_safe_changedir __P((const FTS *, const FTSENT *, int,
 #define	SET(opt)	(sp->fts_options |= (opt))
 
 #define	CHDIR(sp, path)	(!ISSET(FTS_NOCHDIR) && chdir(path))
+#ifdef __VMS
+/* OpenVMS cannot open directories as file descriptors and lacks fchdir(). */
+#define	FCHDIR(sp, fd)	0
+#else
 #define	FCHDIR(sp, fd)	(!ISSET(FTS_NOCHDIR) && fchdir(fd))
+#endif
 
 /* fts_build flags */
 #define	BCHILD		1		/* fts_children */
@@ -165,6 +170,11 @@ fts_open(argv, options, compar)
 	memset(sp, 0, sizeof(FTS));
 	sp->fts_compar = compar;
 	sp->fts_options = options;
+
+	/* OpenVMS directory traversal must use full paths. */
+#ifdef __VMS
+	SET(FTS_NOCHDIR);
+#endif
 
 	/* Logical walks turn on NOCHDIR; symbolic links are too hard. */
 	if (ISSET(FTS_LOGICAL))
@@ -311,7 +321,7 @@ fts_close(sp)
 
 	/* Return to original directory, save errno if necessary. */
 	if (!ISSET(FTS_NOCHDIR)) {
-		if (fchdir(sp->fts_rfd))
+		if (FCHDIR(sp, sp->fts_rfd))
 			saved_errno = errno;
 		(void)close(sp->fts_rfd);
 	}
@@ -614,7 +624,7 @@ fts_children(sp, instr)
 	if ((fd = open(".", O_RDONLY, 0)) < 0)
 		return (sp->fts_child = NULL);
 	sp->fts_child = fts_build(sp, instr);
-	if (fchdir(fd)) {
+	if (FCHDIR(sp, fd)) {
 		(void)close(fd);
 		return (NULL);
 	}
@@ -1216,7 +1226,7 @@ fts_safe_changedir(sp, p, fd, path)
 		goto bail;
 	}
 
-	ret = fchdir(fd);
+	ret = FCHDIR(sp, fd);
 
 bail:
 	if (oldfd < 0) {

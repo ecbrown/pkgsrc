@@ -699,6 +699,9 @@ delete_with_parents(const char *fname, Boolean ign_err, Boolean ign_nonempty)
 {
 	char   *cp, *cp2;
 
+#ifdef __VMS
+	make_path_deletable(fname);
+#endif
 	if (remove(fname)) {
 		if (!ign_err && (!ign_nonempty || errno != ENOTEMPTY))
 			warn("Couldn't remove %s", fname);

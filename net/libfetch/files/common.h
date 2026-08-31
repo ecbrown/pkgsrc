@@ -55,7 +55,7 @@
 #if !defined(__sun) && !defined(__hpux) && !defined(__INTERIX) && \
     !defined(__digital__) && !defined(__linux) && !defined(__MINT__) && \
     !defined(__sgi) && !defined(__minix) && !defined(__CYGWIN__) && \
-    !defined(_M_XENIX)
+    !defined(_M_XENIX) && !defined(__VMS)
 #define HAVE_SA_LEN
 #endif
 

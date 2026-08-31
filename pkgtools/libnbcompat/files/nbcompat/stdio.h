@@ -36,6 +36,10 @@
 # include <stdarg.h>
 #endif
 
+#if HAVE_SYS_TYPES_H
+# include <sys/types.h>
+#endif
+
 #if HAVE_STDIO_H
 # include <stdio.h>
 #endif
@@ -60,7 +64,7 @@ char	*fgetln(FILE *, size_t *);
 ssize_t	getdelim(char **, size_t *, int, FILE *);
 #endif
 
-#if !HAVE_GETLINE
+#if !HAVE_GETLINE && !defined(getline)
 ssize_t	getline(char **, size_t *, FILE *);
 #endif
 

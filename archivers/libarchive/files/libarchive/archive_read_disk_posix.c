@@ -97,7 +97,7 @@
 #include "archive_private.h"
 #include "archive_read_disk_private.h"
 
-#ifndef HAVE_FCHDIR
+#if !defined(HAVE_FCHDIR) && !defined(__VMS)
 #error fchdir function required.
 #endif
 #ifndef O_BINARY
@@ -161,6 +161,10 @@ struct tree_entry {
 	int			 filesystem_id;
 	/* How to return back to the parent of a symlink. */
 	int			 symlink_parent_fd;
+#ifdef __VMS
+	/* OpenVMS cannot open directories as file descriptors. */
+	struct archive_string	 parent_path;
+#endif
 	/* How to restore time of a directory. */
 	struct restore_time	 restore_time;
 };
@@ -220,6 +224,10 @@ struct tree {
 	int			 maxOpenCount;
 	int			 initial_dir_fd;
 	int			 working_dir_fd;
+#ifdef __VMS
+	struct archive_string	 initial_dir_path;
+	struct archive_string	 working_dir_path;
+#endif
 
 	struct stat		 lst;
 	struct stat		 st;
@@ -1673,7 +1681,7 @@ setup_current_filesystem(struct archive_read_disk *a)
 		if (r == 0)
 			xr = get_xfer_size(t, -1, tree_current_access_path(t));
 	} else {
-#ifdef HAVE_FSTATVFS
+#if defined(HAVE_FSTATVFS) && !defined(__VMS)
 		r = fstatvfs(tree_current_dir_fd(t), &svfs);
 		if (r == 0)
 			xr = get_xfer_size(t, tree_current_dir_fd(t), NULL);
@@ -1879,7 +1887,7 @@ setup_current_filesystem(struct archive_read_disk *a)
 			xr = get_xfer_size(t, -1, tree_current_access_path(t));
 #endif
 	} else {
-#ifdef HAVE_FSTATVFS
+#if defined(HAVE_FSTATVFS) && !defined(__VMS)
 		r = fstatvfs(tree_current_dir_fd(t), &svfs);
 		if (r == 0)
 			xr = get_xfer_size(t, tree_current_dir_fd(t), NULL);
@@ -2045,6 +2053,9 @@ tree_push(struct tree *t, const char *path, int filesystem_id,
 		te->depth = te->parent->depth + 1;
 	t->stack = te;
 	archive_string_init(&te->name);
+#ifdef __VMS
+	archive_string_init(&te->parent_path);
+#endif
 	te->symlink_parent_fd = -1;
 	archive_strcpy(&te->name, path);
 	te->flags = needsDescent | needsOpen | needsAscent;
@@ -2099,6 +2110,10 @@ tree_open(const char *path, char symlink_mode, int restore_time)
 	if ((t = calloc(1, sizeof(*t))) == NULL)
 		return (NULL);
 	archive_string_init(&t->path);
+#ifdef __VMS
+	archive_string_init(&t->initial_dir_path);
+	archive_string_init(&t->working_dir_path);
+#endif
 	archive_string_ensure(&t->path, 31);
 	t->initial_symlink_mode = symlink_mode;
 	return (tree_reopen(t, path, restore_time));
@@ -2107,6 +2122,9 @@ tree_open(const char *path, char symlink_mode, int restore_time)
 static struct tree *
 tree_reopen(struct tree *t, const char *path, int restore_time)
 {
+#ifdef __VMS
+	char *cwd;
+#else
 #if defined(O_PATH)
 	/* Linux */
 	const int o_flag = O_PATH;
@@ -2116,6 +2134,7 @@ tree_reopen(struct tree *t, const char *path, int restore_time)
 #elif defined(__FreeBSD__) && defined(O_EXEC)
 	/* FreeBSD */
 	const int o_flag = O_EXEC;
+#endif
 #endif
 
 	t->flags = (restore_time != 0)?needsRestoreTimes:0;
@@ -2138,6 +2157,20 @@ tree_reopen(struct tree *t, const char *path, int restore_time)
 	tree_push(t, path, 0, 0, 0, NULL);
 	t->stack->flags = needsFirstVisit;
 	t->maxOpenCount = t->openCount = 1;
+#ifdef __VMS
+	/* The OpenVMS C RTL cannot open a directory with open(2), so retain
+	 * Unix-style absolute paths for the two directories we must restore. */
+	cwd = getcwd(NULL, 4096, 0);
+	if (cwd == NULL) {
+		t->tree_errno = errno;
+		return (t);
+	}
+	archive_strcpy(&t->initial_dir_path, cwd);
+	archive_strcpy(&t->working_dir_path, cwd);
+	free(cwd);
+	t->initial_dir_fd = -1;
+	t->working_dir_fd = -1;
+#else
 	t->initial_dir_fd = open(".", O_RDONLY | O_CLOEXEC);
 #if defined(O_PATH) || defined(O_SEARCH) || \
  (defined(__FreeBSD__) && defined(O_EXEC))
@@ -2151,12 +2184,42 @@ tree_reopen(struct tree *t, const char *path, int restore_time)
 #endif
 	__archive_ensure_cloexec_flag(t->initial_dir_fd);
 	t->working_dir_fd = tree_dup(t->initial_dir_fd);
+#endif
 	return (t);
 }
 
 static int
 tree_descent(struct tree *t)
 {
+#ifdef __VMS
+	char *cwd;
+	int r = 0;
+
+	t->dirname_length = archive_strlen(&t->path);
+	if (tree_enter_working_dir(t) != 0) {
+		t->tree_errno = errno;
+		return (TREE_ERROR_DIR);
+	}
+	archive_strcpy(&t->stack->parent_path, t->working_dir_path.s);
+	if (chdir(t->stack->name.s) != 0) {
+		t->tree_errno = errno;
+		return (TREE_ERROR_DIR);
+	}
+	cwd = getcwd(NULL, 4096, 0);
+	if (cwd == NULL) {
+		r = errno;
+		(void)chdir(t->stack->parent_path.s);
+		t->tree_errno = r;
+		errno = r;
+		return (TREE_ERROR_DIR);
+	}
+	archive_strcpy(&t->working_dir_path, cwd);
+	free(cwd);
+	t->depth++;
+	t->flags &= ~onInitialDir;
+	t->flags |= onWorkingDir;
+	return (0);
+#else
 	int flag, new_fd, r = 0;
 
 	t->dirname_length = archive_strlen(&t->path);
@@ -2184,6 +2247,7 @@ tree_descent(struct tree *t)
 		t->flags &= ~onWorkingDir;
 	}
 	return (r);
+#endif
 }
 
 /*
@@ -2192,6 +2256,26 @@ tree_descent(struct tree *t)
 static int
 tree_ascend(struct tree *t)
 {
+#ifdef __VMS
+	struct tree_entry *te = t->stack;
+
+	if (tree_enter_working_dir(t) != 0 ||
+	    chdir(te->parent_path.s) != 0) {
+		t->tree_errno = errno;
+		return (TREE_ERROR_FATAL);
+	}
+	archive_strcpy(&t->working_dir_path, te->parent_path.s);
+	(void)close_and_restore_time(-1, t, &te->restore_time);
+	t->depth--;
+	if (t->depth == 0) {
+		t->flags &= ~onWorkingDir;
+		t->flags |= onInitialDir;
+	} else {
+		t->flags &= ~onInitialDir;
+		t->flags |= onWorkingDir;
+	}
+	return (0);
+#else
 	struct tree_entry *te;
 	int new_fd, r = 0, prev_dir_fd;
 
@@ -2220,6 +2304,7 @@ tree_ascend(struct tree *t)
 		t->depth--;
 	}
 	return (r);
+#endif
 }
 
 /*
@@ -2231,7 +2316,11 @@ tree_enter_initial_dir(struct tree *t)
 	int r = 0;
 
 	if ((t->flags & onInitialDir) == 0) {
+#ifdef __VMS
+		r = chdir(t->initial_dir_path.s);
+#else
 		r = fchdir(t->initial_dir_fd);
+#endif
 		if (r == 0) {
 			t->flags &= ~onWorkingDir;
 			t->flags |= onInitialDir;
@@ -2254,7 +2343,11 @@ tree_enter_working_dir(struct tree *t)
 	 * descent.
 	 */
 	if (t->depth > 0 && (t->flags & onWorkingDir) == 0) {
+#ifdef __VMS
+		r = chdir(t->working_dir_path.s);
+#else
 		r = fchdir(t->working_dir_fd);
+#endif
 		if (r == 0) {
 			t->flags &= ~onInitialDir;
 			t->flags |= onWorkingDir;
@@ -2266,7 +2359,12 @@ tree_enter_working_dir(struct tree *t)
 static int
 tree_current_dir_fd(struct tree *t)
 {
+#ifdef __VMS
+	(void)t;
+	return (-1);
+#else
 	return (t->working_dir_fd);
+#endif
 }
 
 /*
@@ -2287,6 +2385,9 @@ tree_pop(struct tree *t)
 	t->basename = t->path.s + t->dirname_length;
 	while (t->basename[0] == '/')
 		t->basename++;
+#ifdef __VMS
+	archive_string_free(&te->parent_path);
+#endif
 	archive_string_free(&te->name);
 	free(te);
 }
@@ -2629,6 +2730,10 @@ tree_free(struct tree *t)
 	if (t == NULL)
 		return;
 	archive_string_free(&t->path);
+#ifdef __VMS
+	archive_string_free(&t->initial_dir_path);
+	archive_string_free(&t->working_dir_path);
+#endif
 	free(t->sparse_list);
 	for (i = 0; i < t->max_filesystem_id; i++)
 		free(t->filesystem_table[i].allocation_ptr);

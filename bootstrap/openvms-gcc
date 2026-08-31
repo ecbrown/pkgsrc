@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# The GNV 3.0-2F gcc compatibility driver does not perform an object-only
+# link.  Giving it a C source file selects its link action, so append a tiny
+# source file only when this invocation otherwise consists solely of link
+# inputs.
+
+compiler=${OPENVMS_CC:-/bin/gcc.exe}
+compile_only=no
+have_link_input=no
+have_source=no
+
+for arg in "$@"; do
+	case "$arg" in
+	-c|-E|-S)
+		compile_only=yes
+		;;
+	*.c|*.cc|*.cpp|*.cxx|*.C)
+		have_source=yes
+		;;
+	*.o|*.obj|*.lo|*.a|*.olb|-l*)
+		have_link_input=yes
+		;;
+	esac
+done
+
+if test "$compile_only" = no && test "$have_link_input" = yes && \
+    test "$have_source" = no; then
+	exec "$compiler" "$@" "${0%/*}/openvms-link-dummy.c"
+fi
+exec "$compiler" "$@"

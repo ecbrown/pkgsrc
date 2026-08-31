@@ -33,18 +33,18 @@ _RRDEPENDS_FILE=${WRKDIR}/.rrdepends
 _FULL_DEPENDS_CMD=	\
 	${AWK} '$$1 == "full" { print $$3; }' < ${_RDEPENDS_FILE}
 
-_REDUCE_DEPENDS_CMD=	${PKGSRC_SETENV} CAT=${CAT:Q}				\
+_REDUCE_DEPENDS_CMD=	${PKGSRC_SETENV} CAT=${CAT:Q} OPSYS=${OPSYS:Q}		\
 				PKG_ADMIN=${PKG_ADMIN:Q}		\
 				PWD_CMD=${PWD_CMD:Q} TEST=${TEST:Q}	\
 			${AWK} -f ${PKGSRCDIR}/mk/pkgformat/pkg/reduce-depends.awk
 
 _HOST_REDUCE_DEPENDS_CMD=						\
-			${PKGSRC_SETENV} CAT=${CAT:Q}			\
+			${PKGSRC_SETENV} CAT=${CAT:Q} OPSYS=${OPSYS:Q}	\
 				PKG_ADMIN=${HOST_PKG_ADMIN:Q}		\
 				PWD_CMD=${PWD_CMD:Q} TEST=${TEST:Q}	\
 			${AWK} -f ${PKGSRCDIR}/mk/pkgformat/pkg/reduce-depends.awk
 
-_REDUCE_RESOLVED_DEPENDS_CMD=${PKGSRC_SETENV} CAT=${CAT:Q}		\
+_REDUCE_RESOLVED_DEPENDS_CMD=${PKGSRC_SETENV} CAT=${CAT:Q} OPSYS=${OPSYS:Q} \
 				PKG_INFO=${PKG_INFO:Q}			\
 				HOST_PKG_INFO=${HOST_PKG_INFO:Q}	\
 			${AWK} -f ${PKGSRCDIR}/mk/pkgformat/pkg/reduce-resolved-depends.awk \
@@ -59,7 +59,7 @@ _pkgformat-show-depends: .PHONY
 	esac
 
 _LIST_DEPENDS_CMD=	\
-	${PKGSRC_SETENV} AWK=${AWK:Q} PKG_ADMIN=${PKG_ADMIN:Q} \
+	${PKGSRC_SETENV} AWK=${AWK:Q} OPSYS=${OPSYS:Q} PKG_ADMIN=${PKG_ADMIN:Q} \
 		PKGSRCDIR=${PKGSRCDIR:Q} PWD_CMD=${PWD_CMD:Q} SED=${SED:Q} \
 		${SH} ${PKGSRCDIR}/mk/pkgformat/pkg/list-dependencies \
 			" "${BOOTSTRAP_DEPENDS:Q} \
@@ -71,13 +71,13 @@ _LIST_DEPENDS_CMD=	\
 			" "${INDIRECT_DEPENDS:Q}
 
 _LIST_DEPENDS_CMD.bootstrap=	\
-	${PKGSRC_SETENV} AWK=${AWK:Q} PKG_ADMIN=${PKG_ADMIN:Q} \
+	${PKGSRC_SETENV} AWK=${AWK:Q} OPSYS=${OPSYS:Q} PKG_ADMIN=${PKG_ADMIN:Q} \
 		PKGSRCDIR=${PKGSRCDIR:Q} PWD_CMD=${PWD_CMD:Q} SED=${SED:Q} \
 		${SH} ${PKGSRCDIR}/mk/pkgformat/pkg/list-dependencies \
 			" "${BOOTSTRAP_DEPENDS:Q} " " " " " " " " " " " "
 
 _LIST_DEPENDS_CMD.test=	\
-	${PKGSRC_SETENV} AWK=${AWK:Q} PKG_ADMIN=${PKG_ADMIN:Q} \
+	${PKGSRC_SETENV} AWK=${AWK:Q} OPSYS=${OPSYS:Q} PKG_ADMIN=${PKG_ADMIN:Q} \
 		PKGSRCDIR=${PKGSRCDIR:Q} PWD_CMD=${PWD_CMD:Q} SED=${SED:Q} \
 		${SH} ${PKGSRCDIR}/mk/pkgformat/pkg/list-dependencies \
 			" " " "${TEST_DEPENDS:Q} " " " " " " " " " "

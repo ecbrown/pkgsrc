@@ -3,3 +3,8 @@ $NetBSD: distinfo,v 1.37 2026/08/24 11:14:20 adam Exp $
 BLAKE2s (pkgconf-3.0.6.tar.gz) = ef18f9e120fb422d593f18be2246165c9c4c66408a7cf0120ed06ffd6fee1c98
 SHA512 (pkgconf-3.0.6.tar.gz) = 86bcf048c80202246701ab613ca17fdc2ba1cc941b8fb7894f75401fc2a40c4853b5dd0466916e22af6f51815830dc7d343d018a9bf0f9397c1724fe88e12467
 Size (pkgconf-3.0.6.tar.gz) = 625431 bytes
+SHA1 (patch-cli_bomtool_main.c) = 7fa6e845250945d222aab24fcba7816e54c8e715
+SHA1 (patch-libpkgconf_bsdstubs.h) = cdbee3f3492401a645187286c6cef5940757e5c9
+SHA1 (patch-libpkgconf_libpkgconf.h) = db7790158a43934a1ddb463926b255c929003bf2
+SHA1 (patch-libpkgconf_path.c) = cca221cb8b531bc5d481d1f0ac842b4411c02408
+SHA1 (patch-libpkgconf_pkg.c) = 4883b4596eb99070f10b633c1fa8006e01fa8043

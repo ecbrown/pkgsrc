@@ -48,7 +48,7 @@ lchflags(const char *path, unsigned long flags)
 	if (S_ISLNK(psb.st_mode)) {
 		return 0;
 	}
-#if defined(__illumos__) || defined(__linux__)
+#if defined(__illumos__) || defined(__linux__) || defined(__VMS)
 	errno = (path == NULL ? EINVAL : ENOSYS);
 	return -1;
 #else

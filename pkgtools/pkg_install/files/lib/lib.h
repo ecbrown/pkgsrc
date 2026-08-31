@@ -324,6 +324,9 @@ int     URLlength(const char *);
 Boolean make_preserve_name(char *, size_t, const char *, const char *);
 void    remove_files(const char *, const char *);
 int     format_cmd(char *, size_t, const char *, const char *, const char *);
+#ifdef __VMS
+void    make_path_deletable(const char *);
+#endif
 
 int	recursive_remove(const char *, int);
 

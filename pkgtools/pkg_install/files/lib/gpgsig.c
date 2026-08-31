@@ -39,6 +39,7 @@ __RCSID("$NetBSD: gpgsig.c,v 1.6 2017/04/19 21:42:50 joerg Exp $");
  */
 
 #include <sys/wait.h>
+#include <errno.h>
 #ifndef NETBSD
 #include <nbcompat/err.h>
 #else
@@ -100,6 +101,17 @@ int
 detached_gpg_sign(const char *content, size_t len, char **sig, size_t *sig_len,
     const char *keyring, const char *user)
 {
+#ifdef __VMS
+	(void)content;
+	(void)len;
+	(void)sig;
+	(void)sig_len;
+	(void)keyring;
+	(void)user;
+	errno = ENOSYS;
+	errx(EXIT_FAILURE, "external GPG signing is not supported on OpenVMS");
+	return -1;
+#else
 	const char *argv[12], **argvp;
 	pid_t child;
 	int fd_in[2], fd_out[2], status;
@@ -187,4 +199,5 @@ detached_gpg_sign(const char *content, size_t len, char **sig, size_t *sig_len,
 		errx(EXIT_FAILURE, "GPG could not create signature");
 
 	return 0;
+#endif
 }

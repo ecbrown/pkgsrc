@@ -77,14 +77,16 @@ MAKE:=	${_MAKE}
 # the call "bmake clean depends" equivalent to "bmake clean && bmake depends".
 _CLEANING:=	${"${.TARGETS:C,( [[:alnum:]-]*clean[[:alnum:]-]*)+$,,W:M*clean*}":?yes:}
 
-.if exists(/usr/bin/uname)
+.if !defined(UNAME)
+.  if exists(/usr/bin/uname)
 UNAME=/usr/bin/uname
-.elif exists(/bin/uname)
+.  elif exists(/bin/uname)
 UNAME=/bin/uname
-.elif exists(/run/current-system/sw/bin/uname)
+.  elif exists(/run/current-system/sw/bin/uname)
 UNAME=/run/current-system/sw/bin/uname
-.else
+.  else
 UNAME=echo Unknown
+.  endif
 .endif
 
 .if !defined(NATIVE_OPSYS)
@@ -258,6 +260,16 @@ MAKEFLAGS+=		HOST_MACHINE_ARCH=${HOST_MACHINE_ARCH:Q}
 .elif ${NATIVE_OPSYS} == "OpenBSD"
 NATIVE_LOWER_OPSYS?= 		openbsd
 
+.elif ${NATIVE_OPSYS} == "OpenVMS"
+_NATIVE_OS_VERSION_CMD=	${UNAME} -v
+NATIVE_OS_VERSION:=		${NATIVE_OS_VERSION:C/^V//}
+NATIVE_LOWER_OPSYS?=		vms
+# GNU config canonicalizes this as x86_64-dec-vms, without a version suffix.
+NATIVE_LOWER_OPSYS_VERSUFFIX?=	# empty
+NATIVE_LOWER_VENDOR?=		dec
+_NATIVE_OPSYS_VERSION_CMD=	${UNAME} -v | \
+			awk -F'[.-]' '{sub(/^V/, "", $$1); printf "%02d%02d%02d", int($$1), int($$2), int($$3)}'
+
 .elif ${NATIVE_OPSYS} == "OSF1"
 NATIVE_OS_VERSION:=		${NATIVE_OS_VERSION:C/^V//}
 NATIVE_LOWER_OPSYS?=		osf1
@@ -407,6 +419,9 @@ OBJECT_FMT?=		PE
 .elif ${NATIVE_OPSYS} == "Darwin"
 NATIVE_OBJECT_FMT?=	Mach-O
 OBJECT_FMT?=		Mach-O
+.elif ${NATIVE_OPSYS} == "OpenVMS"
+NATIVE_OBJECT_FMT?=	ELF
+OBJECT_FMT?=		ELF
 .endif
 
 #
@@ -508,6 +523,8 @@ OBJECT_FMT=	ELF
 .elif ${OPSYS} == "Minix"
 OBJECT_FMT=	ELF
 .elif ${OPSYS} == "Linux"
+OBJECT_FMT=	ELF
+.elif ${OPSYS} == "OpenVMS"
 OBJECT_FMT=	ELF
 .elif ${OPSYS} == "AIX"
 OBJECT_FMT=	XCOFF

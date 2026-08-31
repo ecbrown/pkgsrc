@@ -18,6 +18,19 @@ GNU_CONFIGURE=		yes
 CONFIGURE_ARGS+=	--with-system-libdir=/usr/lib
 CONFIGURE_ARGS+=	--with-system-includedir=/usr/include
 
+# VSI C does not implement GCC visibility attributes.  The OpenVMS libtool
+# backend builds libpkgconf statically, for which the public API needs none.
+CPPFLAGS.OpenVMS+=	-DPKGCONFIG_IS_STATIC
+
+# GNV tar cannot preserve Automake's distributed timestamp ordering.  Keep
+# the build on the shipped generated files and out of dependency tracking.
+CONFIGURE_ARGS.OpenVMS+=	--disable-dependency-tracking
+MAKE_FLAGS.OpenVMS+=	ACLOCAL=true AUTOCONF=true
+MAKE_FLAGS.OpenVMS+=	AUTOHEADER=true AUTOMAKE=true
+# The non-installed test runner requires mkdtemp(), which is not provided by
+# the VSI C RTL.  Keep it out of the normal production build.
+MAKE_FLAGS.OpenVMS+=	noinst_PROGRAMS=
+
 MAKE_FLAGS+=	MANDIR=${PREFIX}/${PKGMANDIR}/man1
 
 PKGCONFIG_PATHS=	${PREFIX}/lib/pkgconfig

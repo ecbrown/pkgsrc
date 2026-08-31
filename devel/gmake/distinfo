@@ -9,3 +9,7 @@ SHA1 (patch-src_getopt.c) = 7249d1894851657badb9c5e428761808f4af87fa
 SHA1 (patch-src_getopt.h) = a1c831a3870ba470b60bfaa460a28e13a05dc594
 SHA1 (patch-src_hash.c) = 755de04a4f9a63f5bfc2520026344d6dc8654992
 SHA1 (patch-src_job.c) = 848eaafc6dfc5086a3d46f9dae387b39d5c514c6
+SHA1 (patch-src_job.h) = 2237b52aa22416d27a3f070eb8e5665c81c38817
+SHA1 (patch-src_job_vms.c) = 3f18ccb6d0e00d88c88b5b1593ed2c580995d192
+SHA1 (patch-src_misc.c) = 0a810354a60e25ef75cfc6653d7c249560603d4d
+SHA1 (patch-src_vmsjobs.c) = 7521afda2f3ba7b5fc42463940f1b13f8c4e07a0

@@ -1,0 +1,32 @@
+# $NetBSD$
+#
+# GNV's gcc compatibility frontend selects its link action from the presence
+# of a C source file.  Add a harmless source only for object/library-only
+# links; source links, compile/preprocess actions, and version queries pass
+# through unchanged.
+
+have_link_input=no
+
+while ! queue_is_empty cmdbuf; do
+	pop_queue cmdbuf arg
+	$debug_log $wrapperlog "    (cmd-sink-vsi-cc) pop:  $arg"
+	case $arg in
+	-Wall|-Wformat*|-ffunction-sections|-fdata-sections)
+		$debug_log $wrapperlog \
+		    "    (cmd-sink-vsi-cc) skip unsupported option:  $arg"
+		continue
+		;;
+	*.o|*.O|*.obj|*.OBJ|*.lo|*.LO|*.a|*.A|*.olb|*.OLB|-l*)
+		have_link_input=yes
+		;;
+	esac
+	. $buildcmd
+done
+
+if $test "${dont_link-no}" != yes && \
+    $test "${has_source-no}" != yes && \
+    $test "$have_link_input" = yes; then
+	arg="${cmd_sink%/*}/openvms-link-dummy.c"
+	$debug_log $wrapperlog "    (cmd-sink-vsi-cc) pop:  $arg [link dummy]"
+	. $buildcmd
+fi

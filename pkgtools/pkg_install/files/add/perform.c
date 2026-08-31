@@ -51,6 +51,7 @@ __RCSID("$NetBSD: perform.c,v 1.134 2025/04/17 21:29:34 wiz Exp $");
 #include <fcntl.h>
 #endif
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -229,6 +230,31 @@ pass:
 	free(p);
 	return 0;
 }
+
+#ifdef __VMS
+/*
+ * The OpenVMS C RTL can report EVMSERR, rather than ENOENT, when open(2)
+ * encounters a missing intermediate directory.  libarchive consequently
+ * does not always invoke its automatic parent-directory creation path.
+ */
+static int
+mkdir_parent(const char *path)
+{
+	char *parent, *slash;
+	int rv;
+
+	parent = xstrdup(path);
+	slash = strrchr(parent, '/');
+	if (slash == NULL || slash == parent) {
+		free(parent);
+		return 0;
+	}
+	*slash = '\0';
+	rv = mkdir_p(parent);
+	free(parent);
+	return rv;
+}
+#endif
 
 /*
  * Read meta data from archive.
@@ -654,7 +680,7 @@ copy_data_to_disk(struct archive *reader, struct archive *writer,
 	int r;
 	const void *buff;
 	size_t size;
-	off_t offset;
+	la_int64_t offset;
 
 	for (;;) {
 		r = archive_read_data_block(reader, &buff, &size, &offset);
@@ -693,7 +719,11 @@ extract_files(struct pkg_task *pkg)
 	plist_t *p;
 	const char *last_file;
 	char *fullpath;
+#ifdef __VMS
+	char *workdir;
+#else
 	int workdir;
+#endif
 
 	if (Fake)
 		return 0;
@@ -714,14 +744,24 @@ extract_files(struct pkg_task *pkg)
 #ifndef O_DIRECTORY
 #define	O_DIRECTORY	0
 #endif
+#ifdef __VMS
+	workdir = getcwd(NULL, 4096, 0);
+	if (workdir == NULL) {
+#else
 	workdir = open(".", O_RDONLY|O_CLOEXEC|O_DIRECTORY);
 	if (workdir == -1) {
+#endif
 		warn("%s: can't open current working directory", pkg->pkgname);
 		return -1;
 	}
 
 	if (chdir(pkg->install_prefix) == -1) {
 		warn("%s: can't change into prefix: %s", pkg->pkgname, pkg->install_prefix);
+#ifdef __VMS
+		free(workdir);
+#else
+		close(workdir);
+#endif
 		return -1;
 	}
 
@@ -751,6 +791,17 @@ extract_files(struct pkg_task *pkg)
 				    p->name, archive_entry_pathname(pkg->entry));
 				goto out;
 			}
+#ifdef __VMS
+			fullpath = xasprintf("%s/%s", pkg->install_prefix,
+			    p->name);
+			if (mkdir_parent(fullpath)) {
+				warn("%s: can't create parent directory for %s",
+				    pkg->pkgname, p->name);
+				free(fullpath);
+				goto out;
+			}
+			free(fullpath);
+#endif
 			fullpath = xasprintf("%s/%s", pkg->prefix, p->name);
 			pkgdb_store(fullpath, pkg->pkgname);
 			free(fullpath);
@@ -848,8 +899,13 @@ out:
 		pkgdb_close();
 	archive_write_free(writer);
 
-	fchdir(workdir);
+#ifdef __VMS
+	(void)chdir(workdir);
+	free(workdir);
+#else
+	(void)fchdir(workdir);
 	close(workdir);
+#endif
 
 	return r;
 }
@@ -895,6 +951,19 @@ pkg_register_depends(struct pkg_task *pkg)
 static void
 normalise_platform(struct utsname *host_name)
 {
+#ifdef __VMS
+	const char *version;
+	size_t version_span;
+
+	/* The OpenVMS C RTL reports "0" in release and "V9.2-3" in version. */
+	version = host_name->version;
+	if (*version == 'V' || *version == 'v')
+		version++;
+	(void)snprintf(host_name->release, sizeof(host_name->release), "%s",
+	    version);
+	version_span = strcspn(host_name->release, " \t");
+	host_name->release[version_span] = '\0';
+#endif
 #ifdef NUMERIC_VERSION_ONLY
 	size_t span;
 
@@ -1300,6 +1369,9 @@ preserve_meta_data_file(struct pkg_task *pkg, const char *name)
 	old_file = pkgdb_pkg_file(pkg->other_version, name);
 	new_file = xasprintf("%s/%s", pkg->install_logdir, name);
 	rv = 0;
+#ifdef __VMS
+	make_path_deletable(old_file);
+#endif
 	if (rename(old_file, new_file) == -1 && errno != ENOENT) {
 		warn("%s: can't move %s from %s to %s", pkg->pkgname, name, old_file, new_file);
 		rv = -1;

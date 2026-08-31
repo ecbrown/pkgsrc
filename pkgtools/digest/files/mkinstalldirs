@@ -8,6 +8,11 @@
 
 errstatus=0
 
+openvms=no
+case `uname -s 2>/dev/null` in
+OpenVMS) openvms=yes ;;
+esac
+
 for file
 do
    set fnord `echo ":$file" | sed -ne 's/^:\//#/;s/^://;s/\// /g;s/^#/\//;p'`
@@ -20,6 +25,20 @@ do
      case "$pathcomp" in
        -* ) pathcomp=./$pathcomp ;;
      esac
+
+     # GNV's test(1) does not recognize a bare OpenVMS volume root such as
+     # /PKGSRC_DATA as a directory, while mkdir correctly reports that it
+     # already exists.  A volume root cannot be created here, so leave it for
+     # the following path components.
+     if test "$openvms" = yes; then
+       case "$pathcomp" in
+         /*)
+           case "${pathcomp#/}" in
+             */*) ;;
+             *) pathcomp="$pathcomp/"; continue ;;
+           esac ;;
+       esac
+     fi
 
      if test ! -d "$pathcomp"; then
         echo "mkdir $pathcomp"

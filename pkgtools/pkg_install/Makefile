@@ -138,6 +138,14 @@ LDFLAGS+=	-L${WRKDIR}/zlib
 CPPFLAGS+=	-I${WRKDIR}/libarchive/libarchive
 LDFLAGS+=	-L${WRKDIR}/libarchive/.libs
 
+.  if ${OPSYS} == "OpenVMS"
+# VSI's linker accepts missing -l arguments, which makes the PCRE probes
+# produce false positives and leak unusable libraries into libarchive.pc.
+LIBARCHIVE_CONFIGURE_ARGS+=	--disable-posix-regex-lib
+# GNV does not provide ranlib; VSI's librarian needs no indexing pass.
+LIBARCHIVE_CONFIGURE_ENV+=	RANLIB=${TOOLS_PLATFORM.ranlib:Q}
+.  endif
+
 # Only use XZ if we actually have builtin support for it. Some systems
 # install the header, but without usable library or prefer to not use
 # the system version, so give them some control.
@@ -162,6 +170,10 @@ LDFLAGS.Darwin+=	-Wl,-search_paths_first
 
 # workaround for pkg/45491
 CONFIGURE_ENV.SunOS+=	ac_cv_header_ext2fs_ext2_fs_h=no
+CONFIGURE_ENV.OpenVMS+=	RANLIB=${TOOLS_PLATFORM.ranlib:Q}
+# The generated configure defines its link-test helper only after this probe;
+# OpenVMS has no native libdb, while libnbcompat supplies dbopen directly.
+CONFIGURE_ENV.OpenVMS+=	ac_cv_lib_db___db185_open=no
 
 # Hack to make sure that the libarchive version is replaced
 pre-configure: config-guess-override config-sub-override
@@ -206,6 +218,7 @@ pre-configure:
 .endif
 .if empty(USE_BUILTIN.libarchive:M[yY][eE][sS])
 	cd ${WRKDIR}/libarchive && ${SETENV} ${_CONFIGURE_SCRIPT_ENV}	\
+		${LIBARCHIVE_CONFIGURE_ENV}				\
 		${CONFIG_SHELL} ${CONFIG_SHELL_FLAGS} ./configure	\
 		--disable-bsdcat --disable-bsdcpio --disable-bsdtar	\
 		--disable-bsdunzip --disable-shared			\
@@ -213,6 +226,14 @@ pre-configure:
 		--without-expat --without-xml2 --without-lz4 --without-lzo2 \
 		--without-iconv --without-nettle --without-zstd --without-cng \
 		${LIBARCHIVE_CONFIGURE_ARGS}
+.  if ${OPSYS} == "OpenVMS"
+	# Avoid GNV's hanging empty grep/sort pipelines for disabled tests.
+	${TOUCH} ${WRKDIR}/libarchive/libarchive/test/list.h \
+		${WRKDIR}/libarchive/tar/test/list.h \
+		${WRKDIR}/libarchive/cpio/test/list.h \
+		${WRKDIR}/libarchive/cat/test/list.h \
+		${WRKDIR}/libarchive/unzip/test/list.h
+.  endif
 	cd ${WRKDIR}/libarchive && ${BUILD_MAKE_CMD}
 .endif
 	cd ${WRKDIR}/libfetch && ${TOUCH} fetch.cat3 &&			\

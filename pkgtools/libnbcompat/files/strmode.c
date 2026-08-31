@@ -49,9 +49,7 @@ __RCSID("$NetBSD: strmode.c,v 1.5 2004/08/23 03:32:12 jlam Exp $");
 #include <nbcompat/unistd.h>
 
 void
-strmode(mode, p)
-	mode_t mode;
-	char *p;
+strmode(mode_t mode, char *p)
 {
 
 	_DIAGASSERT(p != NULL);

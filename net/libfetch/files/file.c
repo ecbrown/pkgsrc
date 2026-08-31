@@ -41,7 +41,9 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#if !defined(HAVE_NBCOMPAT_H) || !HAVE_NBCOMPAT_H
 #include <fnmatch.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

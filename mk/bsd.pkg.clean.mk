@@ -63,11 +63,20 @@ do-clean: su-do-clean
 .  endif
 .endif
 
+# OpenVMS requires write access to delete a file, even from a writable
+# directory.  Configure tests and dist targets commonly leave files read-only.
+.if ${OPSYS} == "OpenVMS"
+_WRKDIR_PRE_CLEAN=	${CHMOD} -R u+w ${WRKDIR} 2>/dev/null || ${TRUE}
+.else
+_WRKDIR_PRE_CLEAN=	${DO_NADA}
+.endif
+
 su-do-clean: .PHONY
 	@${PHASE_MSG} "Cleaning for ${PKGNAME}"
 	${RUN}								\
 	if ${TEST} -d ${WRKDIR}; then					\
 		if ${TEST} -w ${WRKDIR}; then				\
+			${_WRKDIR_PRE_CLEAN};				\
 			${RM} -fr ${WRKDIR};				\
 		else							\
 			${STEP_MSG} ${WRKDIR}" not writable, skipping";	\

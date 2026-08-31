@@ -58,6 +58,9 @@
 #if HAVE_STDINT_H
 #include <stdint.h>
 #endif
+#if HAVE_INTTYPES_H
+#include <inttypes.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -194,7 +197,8 @@ stat_bytes(off_t bytes)
 		bytes /= 1024;
 		prefix++;
 	}
-	snprintf(str, sizeof str, "%4jd %cB", (intmax_t)bytes, *prefix);
+	snprintf(str, sizeof str, "%4" PRIdMAX " %cB",
+	    (intmax_t)bytes, *prefix);
 	return (str);
 }
 
@@ -306,7 +310,8 @@ stat_end(struct xferstat *xs)
 	}
 }
 
-#if HAVE_TERMIOS_H && !defined(PREFER_GETPASS)
+#if HAVE_TERMIOS_H && HAVE_TCGETATTR && HAVE_TCSETATTR && \
+    !defined(PREFER_GETPASS)
 static int
 read_password(const char *prompt, char *pwbuf, size_t pwbuf_len)
 {
@@ -492,7 +497,7 @@ fetch(char *URL, const char *path)
 		if (us.size == -1)
 			printf("Unknown\n");
 		else
-			printf("%jd\n", (intmax_t)us.size);
+			printf("%" PRIdMAX "\n", (intmax_t)us.size);
 		goto success;
 	}
 
@@ -554,7 +559,8 @@ fetch(char *URL, const char *path)
 		if (us.size == -1) {
 			warnx("%s: size unknown", URL);
 		} else if (us.size != S_size) {
-			warnx("%s: size mismatch: expected %jd, actual %jd",
+			warnx("%s: size mismatch: expected %" PRIdMAX
+			    ", actual %" PRIdMAX,
 			    URL, (intmax_t)S_size, (intmax_t)us.size);
 			goto failure;
 		}
@@ -580,10 +586,12 @@ fetch(char *URL, const char *path)
 		warnx("%s: size of remote file is not known", URL);
 	if (v_level > 1) {
 		if (sb.st_size != -1)
-			fprintf(stderr, "local size / mtime: %jd / %ld\n",
+			fprintf(stderr, "local size / mtime: %" PRIdMAX
+			    " / %ld\n",
 			    (intmax_t)sb.st_size, (long)sb.st_mtime);
 		if (us.size != -1)
-			fprintf(stderr, "remote size / mtime: %jd / %ld\n",
+			fprintf(stderr, "remote size / mtime: %" PRIdMAX
+			    " / %ld\n",
 			    (intmax_t)us.size, (long)us.mtime);
 	}
 
@@ -608,8 +616,9 @@ fetch(char *URL, const char *path)
 				goto success;
 			if (sb.st_size > us.size) {
 				/* local file too long! */
-				warnx("%s: local file (%jd bytes) is longer "
-				    "than remote file (%jd bytes)", path,
+				warnx("%s: local file (%" PRIdMAX
+				    " bytes) is longer than remote file (%"
+				    PRIdMAX " bytes)", path,
 				    (intmax_t)sb.st_size, (intmax_t)us.size);
 				goto failure;
 			}
@@ -788,7 +797,8 @@ fetch(char *URL, const char *path)
 
 	/* did the transfer complete normally? */
 	if (us.size != -1 && count < us.size) {
-		warnx("%s appears to be truncated: %jd/%jd bytes",
+		warnx("%s appears to be truncated: %" PRIdMAX
+		    "/%" PRIdMAX " bytes",
 		    path, (intmax_t)count, (intmax_t)us.size);
 		goto failure_keep;
 	}
@@ -851,6 +861,8 @@ main(int argc, char *argv[])
 	const char *p, *s;
 	char *end, *q;
 	int c, e, r;
+
+	setprogname(argv[0]);
 
 	while ((c = getopt(argc, argv,
 	    "146AaB:dFilMmN:no:qRrS:sT:Uvw:")) != -1)

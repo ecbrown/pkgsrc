@@ -86,12 +86,12 @@ BEGIN {
 	}
 
 	distinfo = ARGV[arg++]
-	cmd = sprintf("test -f %s", distinfo)
-	if (system(cmd) != 0) {
+	if ((getline distinfo_probe < distinfo) < 0) {
 		err(sprintf("%s: distinfo file missing: %s", progname,
 		    distinfo))
 		exit 3
 	}
+	close(distinfo)
 
 	#
 	# Initialise list of files to check, passed on the command line.  In
@@ -170,6 +170,7 @@ BEGIN {
 			patchfile = distfiles[distfile]
 			cmd = sprintf("%s -e '/[$]NetBSD.*/d' %s | %s %s",
 			    SED, patchfile, DIGEST, algorithm)
+			cmd = shell_command(cmd)
 			while ((cmd | getline) > 0) {
 				checksums[algorithm, distfile] = $1
 			}
@@ -214,6 +215,7 @@ BEGIN {
 		for (b = 0; b <= batch[algorithm]; b++) {
 			cmd = sprintf("%s %s %s", DIGEST, algorithm,
 			    distsums[algorithm,b])
+			cmd = shell_command(cmd)
 			while ((cmd | getline) > 0) {
 				# Should be unnecessary, but just in case.  If
 				# we want to be really paranoid then test that
@@ -303,6 +305,14 @@ BEGIN {
 function err(errmsg)
 {
 	printf("%s\n", errmsg) > "/dev/stderr"
+}
+
+function shell_command(command, shell)
+{
+	shell = ENVIRON["CHECKSUM_SHELL"]
+	if (shell != "")
+		return sprintf("%s -c \"%s\"", shell, command)
+	return command
 }
 
 function usage()

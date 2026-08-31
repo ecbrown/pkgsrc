@@ -271,12 +271,28 @@ remove_files(const char *path, const char *pattern)
 	}
 
 	/* deleting globbed files */
-	for (j = 0; j < globbed.gl_pathc; j++)
+	for (j = 0; j < globbed.gl_pathc; j++) {
+#ifdef __VMS
+		make_path_deletable(globbed.gl_pathv[j]);
+#endif
 		if (unlink(globbed.gl_pathv[j]) < 0)
 			warn("can't delete ``%s''", globbed.gl_pathv[j]);
+	}
 
 	return;
 }
+
+#ifdef __VMS
+/* OpenVMS requires owner-write access in order to delete a file. */
+void
+make_path_deletable(const char *path)
+{
+	struct stat sb;
+
+	if (stat(path, &sb) == 0 && (sb.st_mode & S_IWUSR) == 0)
+		(void)chmod(path, sb.st_mode | S_IWUSR);
+}
+#endif
 
 /*
  * Using fmt, replace all instances of:

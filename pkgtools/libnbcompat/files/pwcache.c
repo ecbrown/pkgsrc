@@ -123,14 +123,27 @@ __weak_alias(pwcache_groupdb,_pwcache_groupdb)
  * function pointers to various name lookup routines.
  * these may be changed as necessary.
  */
+#ifdef __VMS
+/* VSI declares getpwnam with optional varargs; adapt it to this interface. */
+static struct passwd *
+nbcompat_getpwnam(const char *name)
+{
+	return getpwnam(name);
+}
+#define	PWCACHE_GETPWNAM	nbcompat_getpwnam
+#else
+#define	PWCACHE_GETPWNAM	getpwnam
+#endif
+
 static	int		(*_pwcache_setgroupent)(int)		= setgroupent;
 static	void		(*_pwcache_endgrent)(void)		= endgrent;
 static	struct group *	(*_pwcache_getgrnam)(const char *)	= getgrnam;
 static	struct group *	(*_pwcache_getgrgid)(gid_t)		= getgrgid;
 static	int		(*_pwcache_setpassent)(int)		= setpassent;
 static	void		(*_pwcache_endpwent)(void)		= endpwent;
-static	struct passwd *	(*_pwcache_getpwnam)(const char *)	= getpwnam;
+static	struct passwd *	(*_pwcache_getpwnam)(const char *)	= PWCACHE_GETPWNAM;
 static	struct passwd *	(*_pwcache_getpwuid)(uid_t)		= getpwuid;
+#undef PWCACHE_GETPWNAM
 
 /*
  * internal state

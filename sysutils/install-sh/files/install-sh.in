@@ -282,7 +282,10 @@ fi
 		if [ x"$chowncmd" != x ]; then $doit $chowncmd "$dsttmp"; else true;fi &&
 		if [ x"$chgrpcmd" != x ]; then $doit $chgrpcmd "$dsttmp"; else true;fi &&
 		if [ x"$stripcmd" != x ]; then $doit $stripcmd $stripflags "$dsttmp"; else true;fi &&
-		if [ x"$chmodcmd" != x ]; then $doit $chmodcmd "$dsttmp"; else true;fi &&
+		case ${INSTALL_SH_CHMOD_AFTER_MOVE-no} in
+		yes) true;;
+		*) if [ x"$chmodcmd" != x ]; then $doit $chmodcmd "$dsttmp"; else true;fi;;
+		esac &&
 
 # Now rename the file to the real destination.
 
@@ -292,7 +295,16 @@ fi
 		else
 			$doit $rmcmd -f "$dstfinal"
 		fi &&
-		$doit $mvcmd "$dsttmp" "$dstfinal"
+		$doit $mvcmd "$dsttmp" "$dstfinal" &&
+
+# Some systems require delete access to rename a file, so applying a read-only
+# final mode to the temporary file makes the rename fail.  On those systems,
+# chmod remains the last metadata operation but uses the final pathname.
+
+		case ${INSTALL_SH_CHMOD_AFTER_MOVE-no} in
+		yes) if [ x"$chmodcmd" != x ]; then $doit $chmodcmd "$dstfinal"; else true;fi;;
+		*) true;;
+		esac
 	fi
 
 done &&

@@ -24,6 +24,7 @@
 #		pcc		Portable C Compiler
 #		sunpro		Sun Microsystems, Inc. WorkShip/Forte/Sun
 #				ONE Studio
+#		vsi		VSI C for OpenVMS
 #		xlc		IBM's XL C/C++ compiler suite (Darwin/MacOSX)
 #
 #	The default is "gcc".  You can use ccache and/or distcc with
@@ -170,7 +171,7 @@ _USE_LANGUAGES_EFFECTIVE:=	${USE_LANGUAGES}
 COMPILER_USE_SYMLINKS?=	yes
 
 _COMPILERS=		ccc clang gcc hp icc ido \
-			mipspro mipspro-ucode pcc sunpro xlc
+			mipspro mipspro-ucode pcc sunpro vsi xlc
 _PSEUDO_COMPILERS=	ccache distcc f2c g95
 
 .if defined(NOT_FOR_COMPILER) && !empty(NOT_FOR_COMPILER)

@@ -712,12 +712,25 @@ buildlink-${_pkg_}-message:
 buildlink-${_pkg_}-cookie:
 	${RUN} ${TOUCH} ${TOUCH_FLAGS} ${_BLNK_COOKIE.${_pkg_}}
 
+.if ${OPSYS} == "OpenVMS"
+# GNV grep lacks ERE alternation, and its sed rejects a bracket expression
+# containing both a space and a tab.  pkg_info indents File records with
+# spaces, so use a simple sed expression and let awk select buildlink files.
+BUILDLINK_CONTENTS_FILTER.${_pkg_}?=					\
+	${AWK} '/^include\// || /\.h$$/ || /\.idl$$/ || /\.pc$$/ ||	\
+	    /\/lib[^/]*\.[^/]*$$/ || /^lib\/cmake\// || /^share\/cmake\//'
+BUILDLINK_FILES_CMD.${_pkg_}?=						\
+	${_BLNK_PKG_INFO.${_pkg_}} -f ${BUILDLINK_PKGNAME.${_pkg_}} |	\
+	${SED} -n '/File:/s/^ *File: *//p' |			\
+	${BUILDLINK_CONTENTS_FILTER.${_pkg_}} || ${TRUE}
+.else
 BUILDLINK_CONTENTS_FILTER.${_pkg_}?=					\
 	${EGREP} '(include.*/|\.h$$|\.idl$$|\.pc$$|/lib[^/]*\.[^/]*$$|lib/cmake/|share/cmake/)'
 BUILDLINK_FILES_CMD.${_pkg_}?=						\
 	${_BLNK_PKG_INFO.${_pkg_}} -f ${BUILDLINK_PKGNAME.${_pkg_}} |	\
 	${SED} -n '/File:/s/^[ 	]*File:[ 	]*//p' |		\
 	${BUILDLINK_CONTENTS_FILTER.${_pkg_}} || ${TRUE}
+.endif
 
 # _BLNK_FILES_CMD.<pkg> combines BUILDLINK_FILES_CMD.<pkg> and
 # BUILDLINK_FILES.<pkg> into one command that outputs all of the files
@@ -743,7 +756,56 @@ ${_BLNK_COOKIE.${_pkg_}}:
 		${ERROR_MSG} "[bsd.buildlink3.mk] X11BASE is not set correctly."; \
 		exit 1;							\
 	}
-.if !empty(TOOLS_PLATFORM.mktool) || ${_PKGSRC_USE_MKTOOLS} == "yes"
+.if ${OPSYS} == "OpenVMS"
+	${RUN}								\
+	case "${BUILDLINK_PREFIX.${_pkg_}}" in				\
+	${LOCALBASE})   buildlink_dir="${BUILDLINK_DIR}" ;;		\
+	${X11BASE})     buildlink_dir="${BUILDLINK_X11_DIR}" ;;		\
+	*)              buildlink_dir="${BUILDLINK_DIR}" ;;		\
+	esac;								\
+	files="${.TARGET}.files";					\
+	${AWK} '!/^@/ && (/^include\// || /\.h$$/ || /\.idl$$/ ||	\
+	    /\.pc$$/ || /\/lib[^/]*\.[^/]*$$/ || /^lib\/cmake\// ||	\
+	    /^share\/cmake\//) { print }'				\
+	    "${PKG_DBDIR}/${BUILDLINK_PKGNAME.${_pkg_}}/+CONTENTS" > "$$files"; \
+	cd ${TOOLS_CROSS_DESTDIR}${BUILDLINK_PREFIX.${_pkg_}};		\
+	for filepattern in ${BUILDLINK_FILES.${_pkg_}}; do			\
+		${LS} -1 $$filepattern >> "$$files" 2>/dev/null || ${TRUE}; \
+	done;								\
+	while read file; do						\
+		src="${TOOLS_CROSS_DESTDIR}${BUILDLINK_PREFIX.${_pkg_}}/$$file"; \
+		if [ ! -f "$$src" ]; then				\
+			msg="$$src: not found";				\
+		else							\
+			dest="$$buildlink_dir/$$file";			\
+			if [ -z "${BUILDLINK_FNAME_TRANSFORM.${_pkg_}:Q}" ]; then \
+				msg="$$src";					\
+			else						\
+				dest=`${ECHO} $$dest | ${SED} ${BUILDLINK_FNAME_TRANSFORM.${_pkg_}}`; \
+				msg="$$src -> $$dest";				\
+			fi;							\
+			dir="$${dest%/*}";					\
+			if [ ! -d "$$dir" ]; then				\
+				${MKDIR} "$$dir";				\
+			fi;							\
+			if [ -e "$$dest" ]; then				\
+				${RM} -f "$$dest";				\
+			fi;							\
+			case "$$src" in					\
+			*.la)							\
+				${_BLNK_LT_ARCHIVE_FILTER.${_pkg_}}		\
+					"$$src" > "$$dest";			\
+				msg="$$msg (created)";				\
+				;;						\
+			*)							\
+				${LN} -sf "$$src" "$$dest";			\
+				;;						\
+			esac;							\
+		fi;							\
+		${ECHO} "$$msg" >> ${.TARGET};				\
+	done < "$$files";						\
+	${RM} -f "$$files"
+.elif !empty(TOOLS_PLATFORM.mktool) || ${_PKGSRC_USE_MKTOOLS} == "yes"
 	${RUN}								\
 	case "${BUILDLINK_PREFIX.${_pkg_}}" in				\
 	${LOCALBASE})   buildlink_dir="${BUILDLINK_DIR}" ;;		\

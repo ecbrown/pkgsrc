@@ -39,6 +39,10 @@
 #if defined(HAVE_SYS_SELECT_H)
 # include <sys/select.h>
 #endif
+#if defined(__VMS) && defined(HAVE_SYS_SOCKET_H)
+/* VSI C declares fd_set and the select(2) interfaces here. */
+# include <sys/socket.h>
+#endif
 #ifdef HAVE_LIBGEN_H
 #include <libgen.h>
 #elif !defined(HAVE_DIRNAME)
@@ -47,6 +51,10 @@ char * dirname(char *);
 #include <errno.h>
 #if !defined(HAVE_CONFIG_H) || defined(HAVE_ERR_H)
 #include <err.h>
+#endif
+#if defined(__VMS) && !defined(HAVE_ERR_H)
+void err(int, const char *, ...);
+void warnx(const char *, ...);
 #endif
 
 #include "make.h"

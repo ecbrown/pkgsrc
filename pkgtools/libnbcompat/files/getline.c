@@ -35,6 +35,10 @@
 
 #if !HAVE_GETLINE
 
+#ifdef getline
+#undef getline
+#endif
+
 ssize_t
 getline(char **buf, size_t *bufsiz, FILE *fp)
 {

@@ -135,6 +135,14 @@ function get_endpoint(cmp, patterns, 	endpoint, key, match_all, pattern, pkg)
 	return endpoint
 }
 
+function print_error(message)
+{
+	if (ENVIRON["OPSYS"] == "OpenVMS")
+		print message > "/dev/stderr"
+	else
+		print message | ERRCAT
+}
+
 BEGIN {
 	CAT = ENVIRON["CAT"] ? ENVIRON["CAT"] : "cat"
 	PKG_ADMIN = ENVIRON["PKG_ADMIN"] ? ENVIRON["PKG_ADMIN"] : "pkg_admin"
@@ -154,11 +162,30 @@ BEGIN {
 	#
 	args = ARGV[1]
 	ARGC = split(args, ARGV); ARGC++
+	if (ENVIRON["OPSYS"] == "OpenVMS") {
+		# GAWK system() uses DCL on OpenVMS, where POSIX quoting and
+		# exit-status conventions do not apply.  Dependency reduction is
+		# optional, so preserve each exact dependency and let the caller's
+		# POSIX shell perform its normal directory checks.
+		for (i = 1; i < ARGC; i++) {
+			pattern = ARGV[i]; sub(":.*", "", pattern)
+			dir = ARGV[i]; sub(".*:", "", dir)
+			if (pattern ":" dir != ARGV[i]) {
+				print_error("ERROR: [" PROGNAME "] invalid dependency pattern: " ARGV[i])
+				exit 1
+			}
+			if (!(ARGV[i] in openvms_seen)) {
+				print ARGV[i]
+				openvms_seen[ARGV[i]] = 1
+			}
+		}
+		exit
+	}
 	for (i = 1; i < ARGC; i++) {
 		pattern = ARGV[i];	sub(":.*", "", pattern)
 		dir = ARGV[i];		sub(".*:", "", dir)
 		if (pattern ":" dir != ARGV[i]) {
-			print "ERROR: [" PROGNAME "] invalid dependency pattern: " ARGV[i] | ERRCAT
+			print_error("ERROR: [" PROGNAME "] invalid dependency pattern: " ARGV[i])
 			exit 1
 		}
 		if (pattern_seen[pattern] == 1) continue
@@ -177,7 +204,7 @@ BEGIN {
 			}
 			close(cmd)
 		} else {
-			print "ERROR: [" PROGNAME "] " dir " does not exist." | ERRCAT
+			print_error("ERROR: [" PROGNAME "] " dir " does not exist.")
 			exit 1
 		}
 	}

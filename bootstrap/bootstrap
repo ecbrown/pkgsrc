@@ -223,7 +223,12 @@ check_prog()
 	fi
 
 	for _d in `echo $PATH | tr ':' ' '`; do
-		if [ -f "$_d/$_name" ] && [ -x "$_d/$_name" ]; then
+		if [ -f "$_d/$_name" ]; then
+			# GNV executables are runnable even though access(X_OK) and
+			# test -x report false for them on OpenVMS.
+			if [ "$opsys" != OpenVMS ] && [ ! -x "$_d/$_name" ]; then
+				continue
+			fi
 			# Program found
 			eval $_var=\""$_d/$_name"\"
 			return 1
@@ -318,6 +323,20 @@ copy_src()
 	if [ -f $wrkdir/$_dst/config.sub ]; then
 		$cpprog $pkgsrcdir/mk/gnu-config/config.sub $wrkdir/$_dst/
 	fi
+	case "$opsys" in
+	OpenVMS)
+		# Some bootstrap sources, notably libarchive, keep their canonical
+		# system scripts below build/autoconf instead of at the top level.
+		find "$wrkdir/$_dst" -type f -name config.guess -print |
+		while IFS= read -r _config; do
+			$cpprog "$pkgsrcdir/mk/gnu-config/config.guess" "$_config"
+		done
+		find "$wrkdir/$_dst" -type f -name config.sub -print |
+		while IFS= read -r _config; do
+			$cpprog "$pkgsrcdir/mk/gnu-config/config.sub" "$_config"
+		done
+		;;
+	esac
 }
 
 get_optarg()
@@ -556,6 +575,8 @@ fi
 overpath=""
 root_user=root
 bmakexargs=
+bmake_configure_env=
+configure_env=
 need_awk=no
 need_bsd_install=no
 need_extras=no
@@ -751,6 +772,35 @@ OpenBSD)
 	CC=${CC:-cc}; export CC
 	check_compiler=yes
 	;;
+OpenVMS)
+	root_user=SYSTEM
+	root_group=SYSTEM
+	need_bsd_install=yes
+	machine_arch=`uname -p`
+	groupsprog="id -gn"
+	whoamiprog="id -un"
+	bootstrap_sh=/bin/bash
+	bootstrap_sh_set=set
+	shprog=/bin/bash
+	bmakexargs="$bmakexargs --with-meta=no"
+	# GNV implements exec by spawning and waiting, so Autoconf's shell
+	# re-exec path eventually returns and reports a false fatal error.
+	# Supplying INSTALL skips Autoconf's conftest.dir probe.  On OpenVMS that
+	# name aliases the native directory file conftest.DIR, colliding with the
+	# executable name used by all subsequent compiler probes.
+	configure_env="BASH_ENV=$pkgsrcdir/bootstrap/openvms-bash-env _as_can_reexec=no ac_cv_func_vfork=yes ac_cv_func_vfork_works=yes ac_cv_lib_db___db185_open=no INSTALL='$wrkdir/bin/install-sh -c'"
+	OPENVMS_CC=${OPENVMS_CC:-${CC:-/bin/gcc.exe}}
+	CC=$pkgsrcdir/bootstrap/openvms-gcc
+	export OPENVMS_CC CC
+	compiler=vsi
+	# Make libtool use Bash parameter expansion instead of its sed-pipeline
+	# fallbacks, which are unreliable with the GNV pipe implementation.
+	_G_HAVE_XSI_OPS=yes
+	export _G_HAVE_XSI_OPS
+	# GNV rm diagnoses unmatched wildcards used by generated configure files.
+	ACCEPT_INFERIOR_RM_PROGRAM=yes
+	export ACCEPT_INFERIOR_RM_PROGRAM
+	;;
 OSF1)
 	root_group=system
 	need_bsd_install=yes
@@ -930,6 +980,18 @@ test ${make_jobs} -gt 0 2>/dev/null
 if [ $? -ne 0 ]; then
 	die "ERROR: --make-jobs must be a positive integer argument"
 fi
+bmake_jobs="-j$make_jobs"
+configure_shell_env="CONFIG_SHELL=$shprog"
+case "$opsys" in
+OpenVMS)
+	# Even -j1 selects bmake's pipe-based job engine.  OpenVMS currently
+	# requires compatibility mode, selected by omitting -j altogether.
+	bmake_jobs=
+	# uname -m reports the emulated system-board description, which is not
+	# a useful bmake MACHINE value.
+	bmakexargs="$bmakexargs --with-force-machine=$machine_arch"
+	;;
+esac
 
 # export MACHINE_ARCH and OPSYS for bmake and pkg_install.
 MACHINE_ARCH=${machine_arch}; export MACHINE_ARCH
@@ -1103,6 +1165,11 @@ clang)
 		echo "CLANGBASE=		$CLANGBASE" >> ${TARGET_MKCONF}
 	fi
 	;;
+vsi)
+	echo "VSI_CC=		$OPENVMS_CC" >> ${TARGET_MKCONF}
+	echo "CC=			cc"          >> ${TARGET_MKCONF}
+	echo "CPP=			\${CC} -E" >> ${TARGET_MKCONF}
+	;;
 esac
 if [ -n "$GCCBASE" ]; then
 	echo "GCCBASE=		$GCCBASE" >> ${TARGET_MKCONF}
@@ -1231,7 +1298,7 @@ fi
 bootstrap_bmake() {
 	echo_msg "Bootstrapping bmake"
 	copy_src $pkgsrcdir/devel/bmake/files bmake
-	run_cmd "(cd $wrkdir/bmake && $shprog configure $configure_quiet_flags --prefix=$wrkdir --with-default-sys-path=$wrkdir/share/mk --with-machine-arch=${machine_arch} $bmakexargs)"
+	run_cmd "(cd $wrkdir/bmake && env $configure_env $bmake_configure_env $shprog configure $configure_quiet_flags --prefix=$wrkdir --with-default-sys-path=$wrkdir/share/mk --with-machine-arch=${machine_arch} $bmakexargs)"
 	run_cmd "(cd $wrkdir/bmake && $shprog make-bootstrap.sh)"
 	run_cmd "$install_sh -c -o $user -g $group -m 755 $wrkdir/bmake/bmake $wrkdir/bin/bmake"
 }
@@ -1242,7 +1309,18 @@ bmake="$wrkdir/bin/bmake"
 # build libnbcompat
 echo_msg "Building libnbcompat"
 copy_src $pkgsrcdir/pkgtools/libnbcompat/files libnbcompat
-run_cmd "(cd $wrkdir/libnbcompat; $shprog ./configure $configure_quiet_flags -C --prefix=$prefix --infodir=$infodir --mandir=$mandir --sysconfdir=$sysconfdir --enable-bsd-getopt --enable-db && $bmake $make_quiet_flags -j$make_jobs)"
+run_cmd "(cd $wrkdir/libnbcompat; env $configure_env $shprog ./configure $configure_quiet_flags -C --prefix=$prefix --infodir=$infodir --mandir=$mandir --sysconfdir=$sysconfdir --enable-bsd-getopt --enable-db && $bmake $make_quiet_flags $bmake_jobs)"
+
+case "$opsys" in
+OpenVMS)
+	# OpenVMS has no native POSIX regex interface.  The initial bmake is
+	# sufficient to build libnbcompat, after which bmake can be rebuilt with
+	# full support for the :C modifier required throughout pkgsrc.
+	echo_msg "Rebootstrapping bmake with libnbcompat regex"
+	bmake_configure_env="CPPFLAGS='$CPPFLAGS -I$wrkdir/bmake/missing -I$wrkdir/libnbcompat' LDFLAGS='$LDFLAGS -L$wrkdir/libnbcompat' LIBS='$LIBS -lnbcompat'"
+	bootstrap_bmake
+	;;
+esac
 
 # bootstrap mksh if necessary
 case "$need_mksh" in
@@ -1262,7 +1340,7 @@ esac
 case "$need_ksh" in
 yes)	echo_msg "Bootstrapping ksh"
 	copy_src $pkgsrcdir/shells/pdksh/files ksh
-	run_cmd "(cd $wrkdir/ksh && env $BSTRAP_ENV $shprog ./configure $configure_quiet_flags --prefix=$prefix --infodir=$infodir --mandir=$mandir --sysconfdir=$sysconfdir && $bmake $make_quiet_flags -j$make_jobs)"
+	run_cmd "(cd $wrkdir/ksh && env $configure_env $BSTRAP_ENV $shprog ./configure $configure_quiet_flags --prefix=$prefix --infodir=$infodir --mandir=$mandir --sysconfdir=$sysconfdir && $bmake $make_quiet_flags $bmake_jobs)"
 	run_cmd "$install_sh -c -o $user -g $group -m 755 $wrkdir/ksh/ksh $wrkdir/bin/pdksh"
 	echo "TOOLS_PLATFORM.sh?=		$prefix/bin/pdksh" >> ${TARGET_MKCONF}
 	echo "TOOLS_PLATFORM.sh?=		$wrkdir/bin/pdksh" >> ${BOOTSTRAP_MKCONF}
@@ -1279,7 +1357,7 @@ esac
 case "$need_awk" in
 yes)	echo_msg "Bootstrapping awk"
 	copy_src $pkgsrcdir/lang/nawk/files awk
-	run_cmd "(cd $wrkdir/awk && $bmake $make_quiet_flags -j$make_jobs -f Makefile CC=\"${CC}\" CFLAGS=\"${CFLAGS}\")"
+	run_cmd "(cd $wrkdir/awk && $bmake $make_quiet_flags $bmake_jobs -f Makefile CC=\"${CC}\" CFLAGS=\"${CFLAGS}\")"
 	run_cmd "$install_sh -c -o $user -g $group -m 755 $wrkdir/awk/a.out $wrkdir/bin/nawk"
 	echo "TOOLS_PLATFORM.awk?=		$prefix/bin/nawk" >> ${TARGET_MKCONF}
 	echo "TOOLS_PLATFORM.awk?=		$wrkdir/bin/nawk" >> ${BOOTSTRAP_MKCONF}
@@ -1296,7 +1374,7 @@ esac
 case "$need_sed" in
 yes)	echo_msg "Bootstrapping sed"
 	copy_src $pkgsrcdir/textproc/nbsed/files sed
-	run_cmd "(cd $wrkdir/sed; env $BSTRAP_ENV CPPFLAGS='$CPPFLAGS -I../libnbcompat' LDFLAGS='$LDFLAGS -L../libnbcompat' LIBS='$LIBS -lnbcompat' $shprog ./configure $configure_quiet_flags -C --prefix=$prefix --infodir=$infodir --mandir=$mandir --sysconfdir=$sysconfdir --program-transform-name='s,sed,nbsed,' && $bmake $make_quiet_flags -j$make_jobs)"
+	run_cmd "(cd $wrkdir/sed; env $configure_env $BSTRAP_ENV CPPFLAGS='$CPPFLAGS -I../libnbcompat' LDFLAGS='$LDFLAGS -L../libnbcompat' LIBS='$LIBS -lnbcompat' $shprog ./configure $configure_quiet_flags -C --prefix=$prefix --infodir=$infodir --mandir=$mandir --sysconfdir=$sysconfdir --program-transform-name='s,sed,nbsed,' && $bmake $make_quiet_flags $bmake_jobs)"
 	run_cmd "$install_sh -c -o $user -g $group -m 755 $wrkdir/sed/sed $wrkdir/bin/sed"
 	echo "TOOLS_PLATFORM.sed?=		$prefix/bin/nbsed" >> ${TARGET_MKCONF}
 	echo "TOOLS_PLATFORM.sed?=		$wrkdir/bin/sed" >> ${BOOTSTRAP_MKCONF}
@@ -1311,30 +1389,34 @@ esac
 
 # bootstrap pkg_install
 extra_libarchive_depends() {
-	$sedprog -n -e 's/Libs.private: //p' $wrkdir/libarchive/build/pkgconfig/libarchive.pc
+	$sedprog -n -e 's/Libs.private: //p' $wrkdir/libarchive-build/build/pkgconfig/libarchive.pc
 }
 
 echo_msg "Bootstrapping pkgtools"
 copy_src $pkgsrcdir/archivers/libarchive/files libarchive
-run_cmd "(cd $wrkdir/libarchive; env $BSTRAP_ENV CONFIG_SHELL=$shprog \
-$shprog ./configure $configure_quiet_flags --enable-static --disable-shared \
+mkdir_p $wrkdir/libarchive-build
+run_cmd "(cd $wrkdir/libarchive-build; env $configure_env $BSTRAP_ENV $configure_shell_env \
+$shprog $wrkdir/libarchive/configure $configure_quiet_flags -C \
+--srcdir=$wrkdir/libarchive --enable-static --disable-shared \
+--disable-dependency-tracking \
 --disable-bsdcat --disable-bsdtar --disable-bsdcpio --disable-bsdunzip \
 --disable-posix-regex-lib --disable-xattr --disable-maintainer-mode \
 --disable-acl --without-zlib --without-bz2lib --without-iconv --without-lzma \
 --without-lzo2 --without-lz4 --without-nettle --without-openssl \
 --without-xml2 --without-expat --without-zstd --without-cng \
-MAKE=$bmake && $bmake $make_quiet_flags -j$make_jobs)"
+MAKE=$bmake && $bmake $make_quiet_flags $bmake_jobs \
+CFLAGS=\"${CFLAGS}\" libarchive.la)"
 copy_src $pkgsrcdir/pkgtools/pkg_install/files pkg_install
-run_cmd "(cd $wrkdir/pkg_install; env $BSTRAP_ENV \
+run_cmd "(cd $wrkdir/pkg_install; env $configure_env $BSTRAP_ENV \
 CPPFLAGS='$CPPFLAGS -I${wrkdir}/libnbcompat -I${wrkdir}/libarchive/libarchive' \
 LDFLAGS='$LDFLAGS -L${wrkdir}/libnbcompat' \
 LIBS='$LIBS -lnbcompat' $shprog ./configure $configure_quiet_flags -C \
 --enable-bootstrap --prefix=$prefix --sysconfdir=$sysconfdir \
 --with-pkgdbdir=$pkgdbdir --infodir=$infodir \
 --mandir=$mandir $pkg_install_args && \
-STATIC_LIBARCHIVE=$wrkdir/libarchive/.libs/libarchive.a \
+STATIC_LIBARCHIVE=$wrkdir/libarchive-build/.libs/libarchive.a \
 STATIC_LIBARCHIVE_LDADD='`extra_libarchive_depends`' \
-PKGSRC_MACHINE_ARCH="$machine_arch" $bmake $make_quiet_flags -j$make_jobs)"
+PKGSRC_MACHINE_ARCH="$machine_arch" $bmake $make_quiet_flags $bmake_jobs)"
 run_cmd "$install_sh -c -o $user -g $group -m 755 $wrkdir/pkg_install/add/pkg_add $wrkdir/sbin/pkg_add"
 run_cmd "$install_sh -c -o $user -g $group -m 755 $wrkdir/pkg_install/admin/pkg_admin $wrkdir/sbin/pkg_admin"
 run_cmd "$install_sh -c -o $user -g $group -m 755 $wrkdir/pkg_install/create/pkg_create $wrkdir/sbin/pkg_create"

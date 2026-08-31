@@ -1515,6 +1515,7 @@ EOF
 	    A*) GUESS=alpha-dec-vms ;;
 	    I*) GUESS=ia64-dec-vms ;;
 	    V*) GUESS=vax-dec-vms ;;
+	    [Xx]86_64) GUESS=x86_64-dec-vms ;;
 	esac ;;
     *:XENIX:*:SysV)
 	GUESS=i386-pc-xenix

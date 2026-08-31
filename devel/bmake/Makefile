@@ -28,6 +28,13 @@ CONFIGURE_ARGS+=	--sysconfdir=${PKG_SYSCONFDIR}
 
 .include "../../mk/bsd.prefs.mk"
 
+.if ${OPSYS} == "OpenVMS"
+# The compatibility header in ${WRKSRC}/missing is added by make-bootstrap.sh.
+CONFIGURE_ENV+=	ac_cv_header_regex_h=yes
+CONFIGURE_ARGS+=	--with-defshell=${TOOLS_PLATFORM.sh}
+CONFIGURE_ARGS+=	--with-force-machine=${MACHINE_ARCH}
+.endif
+
 #
 # This section is incomplete, but the general idea is that we should use the
 # same shell that was selected by bootstrap.

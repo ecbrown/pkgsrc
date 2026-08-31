@@ -59,13 +59,29 @@ __RCSID("$NetBSD: remove.c,v 1.3 2009/08/02 17:56:45 joerg Exp $");
 
 #include "lib.h"
 
+#ifdef __VMS
+typedef char *saved_cwd_t;
+#else
+typedef int saved_cwd_t;
+#endif
+
 static int
-safe_fchdir(int cwd)
+restore_cwd(saved_cwd_t cwd)
+{
+#ifdef __VMS
+	return chdir(cwd);
+#else
+	return fchdir(cwd);
+#endif
+}
+
+static int
+safe_restore_cwd(saved_cwd_t cwd)
 {
 	int tmp_errno, rv;
 
 	tmp_errno = errno;
-	rv = fchdir(cwd);
+	rv = restore_cwd(cwd);
 	errno = tmp_errno;
 
 	return rv;
@@ -101,6 +117,9 @@ long_remove(const char **path_ptr, int missing_ok, int *did_chdir)
 		len -= i + 1;
 	}
 
+#ifdef __VMS
+	make_path_deletable(path);
+#endif
 	if (remove(path) == 0 || (errno == ENOENT && missing_ok))
 		rv = 0;
 	else
@@ -112,7 +131,7 @@ long_remove(const char **path_ptr, int missing_ok, int *did_chdir)
 }
 
 static int
-recursive_remove_internal(const char *path, int missing_ok, int cwd)
+recursive_remove_internal(const char *path, int missing_ok, saved_cwd_t cwd)
 {
 	DIR *dir;
 	struct dirent *de;
@@ -123,7 +142,7 @@ recursive_remove_internal(const char *path, int missing_ok, int cwd)
 	/*
 	 * If the argument is longer than PATH_MAX, long_remove
 	 * will try to shorten it using chdir.  So before returning,
-	 * make sure to fchdir back to the original cwd.
+	 * make sure to restore the original cwd.
 	 */
 	sub_path = path;
 	if (long_remove(&sub_path, missing_ok, &did_chdir) == 0)
@@ -134,7 +153,7 @@ recursive_remove_internal(const char *path, int missing_ok, int cwd)
 		rv = 1;
 
 	if (rv != 1) {
-		if (did_chdir && safe_fchdir(cwd) == -1 && rv == 0)
+		if (did_chdir && safe_restore_cwd(cwd) == -1 && rv == 0)
 			rv = -1;
 		return rv;
 	}
@@ -145,7 +164,7 @@ recursive_remove_internal(const char *path, int missing_ok, int cwd)
 		return -1;
 	}
 
-	if (did_chdir && fchdir(cwd) == -1)
+	if (did_chdir && restore_cwd(cwd) == -1)
 		return -1;
 
 	rv = 0;
@@ -162,11 +181,11 @@ recursive_remove_internal(const char *path, int missing_ok, int cwd)
 
 	closedir(dir);
 
-	safe_fchdir(cwd);
+	safe_restore_cwd(cwd);
 
 	rv |= long_remove(&path, missing_ok, &did_chdir);
 
-	if (did_chdir && safe_fchdir(cwd) == -1 && rv == 0)
+	if (did_chdir && safe_restore_cwd(cwd) == -1 && rv == 0)
 		rv = -1;
 
 	return rv;
@@ -175,21 +194,34 @@ recursive_remove_internal(const char *path, int missing_ok, int cwd)
 int
 recursive_remove(const char *path, int missing_ok)
 {
-	int orig_cwd, rv;
+	saved_cwd_t orig_cwd;
+	int rv;
 
 	/* First try the easy case of regular file or empty directory. */
+#ifdef __VMS
+	make_path_deletable(path);
+#endif
 	if (remove(path) == 0 || (errno == ENOENT && missing_ok))
 		return 0;
 
 	/*
 	 * If the path is too long, long_remove will use chdir to shorten it,
-	 * so remember the current directory first.
+	 * so remember the current directory first.  OpenVMS cannot open a
+	 * directory as a file descriptor, so retain its absolute path there.
 	 */
+#ifdef __VMS
+	if ((orig_cwd = getcwd(NULL, 4096, 0)) == NULL)
+#else
 	if ((orig_cwd = open(".", O_RDONLY)) == -1)
+#endif
 		return -1;
 
 	rv = recursive_remove_internal(path, missing_ok, orig_cwd);
 
+#ifdef __VMS
+	free(orig_cwd);
+#else
 	close(orig_cwd);
+#endif
 	return rv;
 }

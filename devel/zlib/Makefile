@@ -19,6 +19,15 @@ CFLAGS+=		${CPPFLAGS}
 LDFLAGS.Cygwin=		-no-undefined
 
 .include "../../mk/bsd.prefs.mk"
+.if ${OPSYS} == "OpenVMS"
+.undef USE_LIBTOOL
+BUILD_TARGET=		libz.a
+PLIST.static=		yes
+.else
+PLIST.libtool=		yes
+.endif
+PLIST_VARS+=		libtool static
+
 .if ${MACHINE_ARCH} == i386
 # use NO_DIVIDE for adler32 if processor does not do division in hardware
 # which avoids needing emulation provided by libgcc_s
@@ -46,7 +55,11 @@ do-extract:
 	${CP} -r ${FILESDIR} ${WRKSRC}
 
 do-install:
+.if ${OPSYS} == "OpenVMS"
+	${INSTALL_DATA} ${WRKSRC}/libz.a ${DESTDIR}${PREFIX}/lib
+.else
 	${LIBTOOL} --mode=install ${INSTALL_LIB} ${WRKSRC}/libz.la ${DESTDIR}${PREFIX}/lib
+.endif
 	${INSTALL_MAN} ${WRKSRC}/zlib.3 ${DESTDIR}${PREFIX}/${PKGMANDIR}/man3
 	${INSTALL_DATA} ${WRKSRC}/zconf.h ${DESTDIR}${PREFIX}/include
 	${INSTALL_DATA} ${WRKSRC}/zlib.h ${DESTDIR}${PREFIX}/include

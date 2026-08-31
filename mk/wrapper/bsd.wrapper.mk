@@ -239,6 +239,16 @@ _WRAP_TRANSFORM.CC=	${WRAPPER_TMPDIR}/transform-icc-cc
 _WRAP_TRANSFORM.CXX=	${_WRAP_TRANSFORM.CC}
 .endif
 
+.if !empty(PKGSRC_COMPILER:Mvsi)
+_WRAP_CMD_SINK.CC=	${WRAPPER_TMPDIR}/cmd-sink-vsi-cc
+_VSI_LINK_DUMMY=	${WRAPPER_TMPDIR}/openvms-link-dummy.c
+WRAPPER_TARGETS+=	${_VSI_LINK_DUMMY}
+
+${_VSI_LINK_DUMMY}: ${PKGSRCDIR}/bootstrap/openvms-link-dummy.c
+	${RUN} ${MKDIR} ${.TARGET:H}
+	${RUN} ${CP} ${.ALLSRC} ${.TARGET}
+.endif
+
 .if !empty(PKGSRC_COMPILER:Mmipspro)
 _WRAP_ARG_PP.CC=	${WRAPPER_TMPDIR}/arg-pp-mipspro-cc
 _WRAP_CACHE_BODY.CC=	${WRAPPER_TMPDIR}/cache-body-mipspro-cc
@@ -517,6 +527,7 @@ generate-wrappers: ${_target_}
 	cmd-sink-solaris-imake \
 	cmd-sink-sunpro-cxx \
 	cmd-sink-unixware-gcc \
+	cmd-sink-vsi-cc \
 	transform-aix-cc \
 	transform-ccc-cc \
 	transform-gcc \

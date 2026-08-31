@@ -180,12 +180,15 @@ DebugFailedTarget(const char *cmd, const GNode *gn)
 static bool
 UseShell(const char *cmd MAKE_ATTR_UNUSED)
 {
-#if defined(FORCE_USE_SHELL) || !defined(MAKE_NATIVE)
+#if defined(FORCE_USE_SHELL) || !defined(MAKE_NATIVE) || defined(__VMS)
 	/*
 	 * In a non-native build, the host environment might be weird enough
 	 * that it's necessary to go through a shell to get the correct
 	 * behaviour.  Or perhaps the shell has been replaced with something
 	 * that does extra logging, and that should not be bypassed.
+	 *
+	 * OpenVMS also needs the shell for scripts: GNV does not expose Unix
+	 * execute bits or provide execvp's usual ENOEXEC script fallback.
 	 */
 	return true;
 #else
