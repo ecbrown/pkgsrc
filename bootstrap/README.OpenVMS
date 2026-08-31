@@ -1,0 +1,202 @@
+# Bootstrapping pkgsrc on OpenVMS
+
+This port targets VSI OpenVMS x86-64 with VSI C and GNV 3.0-2F or newer.
+It currently bootstraps a static, C-only pkgsrc environment.  C++, parallel
+bmake jobs, general shared-image support, and general DECwindows/X11 buildlink
+support are follow-up work.  Packages with native OpenVMS build systems can
+already use installed shareable images; `vim-motif` does this for DECwindows.
+
+## Prerequisites
+
+Use an ODS-5 volume with extended filenames and hard links enabled.  Keep the
+pkgsrc source, work directory, package prefix, database, and temporary files on
+that volume; a bootstrap requires substantially more space than the OpenVMS
+system disk normally provides.
+
+The account also needs enough paging-file quota for Autoconf's generated
+scripts and the full `pkg_install` build.  A `PGFLQUOTA` of 12,000,000
+pagelets is known to work for a clean bootstrap and subsequent package builds.
+An administrator can set it with `MCR AUTHORIZE MODIFY user
+/PGFLQUOTA=12000000`; start a new login session after changing the UAF record.
+The system must have enough page-file capacity to satisfy that quota.  The
+reference VM uses an 8 GiB secondary page file, installed at boot from
+`SYS$MANAGER:SYPAGSWPFILES.COM`.
+
+Increase the build account's subprocess quota as well.  A pkgsrc recipe nests
+the framework make, the package make, its shell wrapper, and compiler helper
+processes; the usual `PRCLM` value of 8 is too small.  A value of 100 is known
+to work and can be set with `MCR AUTHORIZE MODIFY user /PRCLM=100`.  This also
+requires a new login session.
+
+Before starting GNV, create a scratch directory on the same ODS-5 volume as
+the pkgsrc work directories.  GNV patch uses `SYS$SCRATCH` for replacement
+files, and OpenVMS cannot rename those files across volumes.
+
+```
+$ CREATE/DIRECTORY disk:[user.pkgsrc-tmp]
+$ DEFINE/JOB SYS$SCRATCH disk:[user.pkgsrc-tmp]
+```
+
+Then enable the extended C RTL pathname behavior in the DCL process that will
+run the bootstrap:
+
+```
+$ DEFINE/JOB DECC$UNIX_LEVEL 30
+$ DEFINE/JOB DECC$POSIX_COMPLIANT_PATHNAMES ENABLE
+$ DEFINE/JOB DECC$UNIX_PATH_BEFORE_LOGNAME ENABLE
+$ DEFINE/JOB DECC$STREAM_PIPE ENABLE
+$ SET PROCESS/PARSE_STYLE=EXTENDED
+$ BASH
+```
+
+Use the job logical table: GNV emulates some `exec` operations with spawned
+processes that do not retain process-table logical names.  The level-30
+setting is significant for builds: it enables Unix filename,
+glob, permission, and sharing behavior recommended by VSI for Bash and GNV.
+In particular, compiler probe images are replaced instead of accumulating as
+OpenVMS file versions, and shell wildcard cleanup works as Autoconf expects.
+Stream pipes are also required for configure scripts: with legacy record pipes,
+Bash can wait minutes for EOF after a completed command substitution.  VSI's
+GNV release notes warn that stream pipes can hang the specific `bash dcl git`
+combination, so use this job only for pkgsrc builds and do not run Git through
+the GNV `dcl` wrapper in it.  This setting must be a job logical before Bash is
+started; exporting a Unix environment variable with the same name does not
+enable the C RTL feature.  pkgsrc checks it before starting a package's
+configure phase and reports a direct error when it is missing.
+
+Run the bootstrap explicitly with Bash.  Direct shebang execution and GNV
+Bash's POSIX mode are not reliable on this release.
+
+```
+bash$ cd /path/to/pkgsrc
+bash$ bash ./bootstrap/bootstrap \
+    --unprivileged \
+    --cwrappers no \
+    --make-jobs 1 \
+    --prefix /path/to/pkg \
+    --workdir /path/to/pkgsrc-bootstrap
+```
+
+Do not relocate the pkgsrc checkout after bootstrapping.  The generated
+configuration and compiler wrapper refer to files in that checkout.
+
+## Current GNV workarounds
+
+- Autoconf is prevented from enabling the broken GNV Bash POSIX mode.
+- Autoconf executable probes treat regular files as runnable because GNV does
+  not expose OpenVMS images with Unix execute bits.
+- Autoconf's false-negative probe for the OpenVMS `vfork` macro is cached.
+- Autoconf's shell re-exec path is suppressed because GNV emulates `exec` by
+  spawning and waiting, allowing code after a nominally successful `exec` to
+  run and report a false failure.
+- Libtool is told to use Bash's XSI parameter expansions instead of its
+  sed-pipeline fallback, which is unreliable under the GNV pipe emulation.
+- bmake metadata mode is disabled.
+- bmake captures `!=` command output through regular files rather than a
+  `vfork`/pipe sequence, which is not valid for the OpenVMS C RTL emulation.
+- bmake compatibility mode runs recipes through Bash so scripts do not depend
+  on unavailable Unix execute-bit and `execvp` fallback semantics.
+- The pkgsrc compiler wrapper invokes the native frontend directly and adds a
+  harmless C source to object-only links.
+- Package builds stay out of bmake's pipe-based job mode, even when the
+  bootstrap passes `MAKE_JOBS=1`.
+- libnbcompat's FTS implementation always uses full-path traversal because
+  OpenVMS cannot open directories as file descriptors and has no `fchdir()`.
+- libarchive is configured out of tree with dependency tracking disabled;
+  Automake's depfile pass otherwise creates a very slow nested process chain.
+- The bootstrap builds only libarchive's static library target, avoiding test
+  inventory rules that use GNU make automatic variables unsupported by bmake.
+- The libarchive build reuses the requested bootstrap `CFLAGS`; VSI's gcc
+  frontend otherwise accepts Autoconf probes for unsupported GNU warning and
+  section flags but only diagnoses them during every real compilation.
+- pkgsrc uses static libraries, single-job builds, no stripping, and no
+  `ranlib` during the initial port.
+
+## Platform identity
+
+Keep `OPSYS` as `OpenVMS`, matching the product name and `uname -s`.  GNU
+configuration names use the established lower-case operating-system component
+and historical vendor component, so the x86-64 canonical triplet is
+`x86_64-dec-vms`.  Using `x86_64-vsi-vms`, or globally replacing `OpenVMS`
+with `VMS` in pkgsrc conditionals, would make this port disagree with GNU
+config and existing package tests.
+
+## Validated packages
+
+The following end-user packages have clean binary packages and runtime tests
+on the reference VSI OpenVMS x86-64 system:
+
+- `ncurses-6.6`: headers, static libraries, utilities, and the terminfo
+  database; both `tic`/`infocmp` and a linked `getch()` test are validated.
+- `lynx-2.9.2nb8`: curses UI, local-file rendering, and HTTP retrieval are
+  validated.  The initial port deliberately disables NLS, TLS, and IPv6.
+- `vim-share-9.2.1025` and `vim-motif-9.2.1025`: runtime files, `xxd`, the
+  native MMS-built Huge Vim image, and its DECwindows/Motif X11 GUI are
+  validated.  This is release tag `v9.2.1025`, not the moving master branch.
+
+Build the packages serially.  Vim's runtime package must precede its GUI
+package:
+
+```
+bash$ cd devel/ncurses && bmake clean package && bmake install
+bash$ cd ../../www/lynx && bmake clean package && bmake install
+bash$ cd ../../editors/vim-share && bmake clean package && bmake install
+bash$ cd ../vim-motif && bmake clean package && bmake install
+```
+
+The Vim package installs both `bin/vim` for GNV shells and `bin/vim.exe` for
+native DCL.  For example, after translating the Unix prefix to its native VMS
+directory syntax:
+
+```
+$ MCR disk:[user.pkg.bin]vim --version
+```
+
+The image contains fallback locations for `VIM` and `VIMRUNTIME`.  A login or
+CDE launcher that already defines those logical names for another Vim version
+must override them for the pkgsrc image, for example:
+
+```
+$ DEFINE/PROCESS VIM disk:[user.pkg.share.vim]
+$ DEFINE/PROCESS VIMRUNTIME disk:[user.pkg.share.vim.vim92]
+$ DEFINE/USER SYS$INPUT NLA0:
+$ MCR disk:[user.pkg.bin]vim -g
+```
+
+For CDE Application Manager, put a procedure such as this under `SYS$LOGIN`:
+
+```
+$ SET NOON
+$ SET DISPLAY/CREATE/TRANSPORT=TCPIP/NODE=192.0.2.10/SERVER=1/SCREEN=0
+$ DEFINE/PROCESS DISPLAY "192.0.2.10:1.0"
+$ DEFINE/PROCESS VIM disk:[user.pkg.share.vim]
+$ DEFINE/PROCESS VIMRUNTIME disk:[user.pkg.share.vim.vim92]
+$ DEFINE/USER SYS$INPUT NLA0:
+$ MCR disk:[user.pkg.bin]vim -g
+$ EXIT $STATUS
+```
+
+Replace the example X server address, display number, and installation disk.
+Run the image directly: CDE already owns the action process, while an extra
+DCL `SPAWN/NOWAIT` can terminate with its short-lived parent before the GUI is
+mapped.
+
+Install an action definition like the following as
+`SYS$LOGIN:[.DT.TYPES]VIM92.DT`:
+
+```
+ACTION vim92
+{
+        LABEL           Vim 9.2.1025
+        ARG_COUNT       0
+        ICON            Dxeve
+        TYPE            COMMAND
+        WINDOW_TYPE     NO_STDIO
+        EXEC_STRING     $ @SYS$LOGIN:VIM92_CDE.COM
+        DESCRIPTION     Vim graphical Motif editor for OpenVMS.
+}
+```
+
+Finally, add an executable file named `VIM92` to the appropriate
+`SYS$LOGIN:[.DT.APPMANAGER...]` folder so Application Manager exposes the
+action.  A newly started CDE session loads the per-user action database.
