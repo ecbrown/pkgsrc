@@ -57,12 +57,75 @@ SUBST_STAGE.rpath=	post-configure
 SUBST_SED.rpath+=	-e "s|-L\\(.libdir\\)|${COMPILER_RPATH_FLAG}\\1 -L\\1|"
 SUBST_MESSAGE.rpath=	Fixing rpath in ncurses-config.
 
+# GNV Bash can lose its current directory after config.status returns.  Run
+# ncurses' final summary target from the configure script's saved directory.
+SUBST_CLASSES.OpenVMS+=	preinstall
+SUBST_STAGE.preinstall=	pre-configure
+SUBST_FILES.preinstall=	configure
+SUBST_SED.preinstall=	-e 's|$${MAKE:-make} preinstall|$${MAKE:-make} -C "${WRKSRC}" -f Makefile preinstall|'
+
+# GNV make does not preserve command-line variables in ncurses' recursive
+# makes, and its child shells cannot reliably rediscover the libtool wrapper.
+# Avoid Bash's simulated `(cd ... && make)` subshells as well: descriptors
+# inherited through those subshells make later exec calls fail intermittently.
+SUBST_CLASSES.OpenVMS+=	recursive-libtool
+SUBST_STAGE.recursive-libtool=	post-configure
+SUBST_FILES.recursive-libtool=	Makefile include/Makefile ncurses/Makefile
+SUBST_FILES.recursive-libtool+=	progs/Makefile panel/Makefile menu/Makefile
+SUBST_FILES.recursive-libtool+=	form/Makefile misc/Makefile
+SUBST_SED.recursive-libtool=	-e 's|^TOP_MFLAGS[[:space:]]*= |TOP_MFLAGS = LIBTOOL="${WRAPPER_DIR}/bin/libtool" |'
+SUBST_SED.recursive-libtool+=	-e 's|( cd \([^ ]*\) && $${MAKE} $${TOP_MFLAGS} $$@ )|$${MAKE} -C \1 $${TOP_MFLAGS} $$@|'
+SUBST_SED.recursive-libtool+=	-e 's|( cd \([^ ]*\) && $$(MAKE)|$$(MAKE) -C \1|'
+SUBST_SED.recursive-libtool+=	-e '/$$(MAKE) -C /s| )$$||'
+SUBST_SED.recursive-libtool+=	-e 's|@ (cd $${INCLUDEDIR} && rm -f \([^)]*\)) ;|@ rm -f $${INCLUDEDIR}/\1 ;|'
+SUBST_SED.recursive-libtool+=	-e 's|( cd $$(BINDIR) && $$(LN_S) $$(actual_tic) $$(actual_infotocap) )|$$(LN_S) $$(actual_tic) $$(BINDIR)/$$(actual_infotocap)|'
+SUBST_SED.recursive-libtool+=	-e 's|( cd $$(BINDIR) && $$(LN_S) $$(actual_tic) $$(actual_captoinfo) )|$$(LN_S) $$(actual_tic) $$(BINDIR)/$$(actual_captoinfo)|'
+SUBST_SED.recursive-libtool+=	-e 's|( cd $$(BINDIR) && $$(LN_S) $$(actual_tset) $$(actual_reset) )|$$(LN_S) $$(actual_tset) $$(BINDIR)/$$(actual_reset)|'
+SUBST_SED.recursive-libtool+=	-e 's|@ (cd $${INCLUDEDIR} && rm -f ncurses.h && $${LN_S} curses.h ncurses.h)|@ rm -f $${INCLUDEDIR}/ncurses.h ; $${LN_S} curses.h $${INCLUDEDIR}/ncurses.h|'
+SUBST_SED.recursive-libtool+=	-e 's|(cd $${INCLUDEDIR} && rm -f \([^)]*\))|rm -f $${INCLUDEDIR}/\1|'
+SUBST_SED.recursive-libtool+=	-e 's|@( cd $$(srcdir)/tabset &&|@cd $$(srcdir)/tabset ;|'
+SUBST_SED.recursive-libtool+=	-e "s|fi; done' )|fi; done'|"
+
 SUBST_CLASSES+=		setenv
 SUBST_FILES.setenv=	misc/run_tic.in
 SUBST_STAGE.setenv=	pre-configure
 SUBST_VARS.setenv=	SETENV
 
 .include "../../mk/bsd.prefs.mk"
+
+PLIST_VARS+=		cxx static
+.if ${OPSYS} == "OpenVMS"
+# The VSI x86-64 kit currently supplies C but no working C++ frontend.  The
+# C++ binding and test programs are not needed by C consumers such as Lynx.
+USE_LANGUAGES:=		c
+CONFIGURE_ARGS+=	--without-cxx --without-cxx-binding --without-tests
+CONFIGURE_ARGS+=	--disable-ext-colors
+CONFIGURE_ARGS+=	--enable-symlinks
+CONFIGURE_ENV+=		cf_cv_have_tcgetattr=yes
+# Starting a sub-make from another GNV make leaves Bash with descriptors that
+# make a later exec fail with "illegal seek".  Have pkgsrc invoke each ncurses
+# directory directly, preserving the upstream dependency order.
+BUILD_DIRS=		man include ncurses progs panel menu form misc
+INSTALL_DIRS=		man include ncurses progs panel menu form misc
+MAKE_FLAGS+=		LIBTOOL=${WRAPPER_DIR}/bin/libtool
+# The configured program-name transform is a no-op, but the generated
+# makefiles recompute every name with command substitutions and sed pipelines.
+# GNV Bash leaks resources while emulating those subshells and can then fail to
+# exec the compiler.  Pass the already-resolved names through recursive makes.
+MAKE_FLAGS+=		actual_captoinfo=captoinfo actual_clear=clear
+MAKE_FLAGS+=		actual_infocmp=infocmp actual_infotocap=infotocap
+MAKE_FLAGS+=		actual_init=init actual_reset=reset actual_tabs=tabs
+MAKE_FLAGS+=		actual_tic=tic actual_toe=toe actual_tput=tput
+MAKE_FLAGS+=		actual_tset=tset
+MAKE_FLAGS+=		define_captoinfo=captoinfo define_clear=clear
+MAKE_FLAGS+=		define_infotocap=infotocap define_init=init
+MAKE_FLAGS+=		define_reset=reset
+# GNV awk does not reliably capture libtool-expand's child output, so list the
+# static archive payloads explicitly instead of relying on PLIST expansion.
+PLIST.static=		yes
+.else
+PLIST.cxx=		yes
+.endif
 
 .if ${USE_CROSS_COMPILE:U:tl} == yes
 TOOL_DEPENDS+=		ncurses-[0-9]*:../../devel/ncurses
@@ -119,8 +182,14 @@ post-install:
 	${RM} -f ${DESTDIR}${PREFIX}/${TERMINFODIR}/68/hp2621A
 	${RM} -f ${DESTDIR}${PREFIX}/${TERMINFODIR}/68/hp70092A
 .endif
+.if ${OPSYS} == "OpenVMS"
+	${FIND} ${DESTDIR}${PREFIX}/${TERMINFODIR} -type f -print -o \
+		-type l -print | ${SORT} | \
+		${SED} -e "s,^${DESTDIR}${PREFIX}/,," >${WRKDIR}/PLIST.terminfo
+.else
 	${FIND} ${DESTDIR}${PREFIX}/${TERMINFODIR} -type f -print | ${SORT} | \
 		${SED} -e "s,^${DESTDIR}${PREFIX}/,," >${WRKDIR}/PLIST.terminfo
+.endif
 	${RM} -f ${DESTDIR}${PREFIX}/lib/terminfo
 
 .include "../../mk/bsd.pkg.mk"
