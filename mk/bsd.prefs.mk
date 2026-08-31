@@ -548,7 +548,13 @@ OBJECT_FMT=	ELF
 .endif
 
 # Calculate depth
-.if exists(${.CURDIR}/mk/bsd.pkg.mk)
+.if ${OPSYS} == "OpenVMS" && defined(_PKGSRCDIR)
+# A recursive make is often started after a shell cd.  GNV then reports the
+# physical device path (/DISK$PKGSRC/...), whose '$' is interpreted by bmake
+# before the directory tests below run.  The parent make already passes the
+# POSIX pkgsrc root in _PKGSRCDIR, so use that spelling to locate the framework.
+_PKGSRC_TOPDIR=	${_PKGSRCDIR}
+.elif exists(${.CURDIR}/mk/bsd.pkg.mk)
 _PKGSRC_TOPDIR=	${.CURDIR}
 .elif exists(${.CURDIR}/../mk/bsd.pkg.mk)
 _PKGSRC_TOPDIR=	${.CURDIR}/..
@@ -861,7 +867,16 @@ FETCH_USING=	fetch
 .endif
 
 .if !defined(_PKGSRCDIR)
+.  if ${OPSYS} == "OpenVMS"
+# GNV reports the current directory with its OpenVMS device name (for
+# example, /DISK$PKGSRC).  The '$' is meaningful to bmake, so converting the
+# path through pwd would turn it into /DISKKGSRC while the makefiles are
+# parsed.  .CURDIR is the POSIX spelling supplied by bmake -C and is safe to
+# carry into recursive makes.
+_PKGSRCDIR=		${_PKGSRC_TOPDIR}
+.  else
 _PKGSRCDIR!=		cd ${_PKGSRC_TOPDIR} && ${PWD_CMD}
+.  endif
 MAKEFLAGS+=		_PKGSRCDIR=${_PKGSRCDIR:Q}
 .endif
 PKGSRCDIR=		${_PKGSRCDIR}
@@ -883,7 +898,13 @@ _BUILTIN_PKGS?=		# empty
 .if defined(WRKOBJDIR)
 BUILD_DIR?=		${WRKOBJDIR}/${PKGPATH}
 .else
+.  if ${OPSYS} == "OpenVMS"
+# As above, retain bmake's POSIX spelling instead of asking GNV pwd for a
+# device-qualified path containing '$'.
+BUILD_DIR=		${_PKGSRC_TOPDIR}/${PKGPATH}
+.  else
 BUILD_DIR!=		cd ${.CURDIR} && ${PWD_CMD}
+.  endif
 .endif
 
 # If OBJHOSTNAME is set, use first component of hostname in directory name.

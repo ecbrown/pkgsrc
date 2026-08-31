@@ -3,4 +3,4 @@ $NetBSD: distinfo,v 1.31 2026/07/23 15:03:18 ryoon Exp $
 BLAKE2s (less-704.tar.gz) = 0e1fad6f3d1cc5e37526e60f430d6e0fecc5131aac152293ecba165b909abe8f
 SHA512 (less-704.tar.gz) = c6a933dd6dc058f912de524fc4e71614deb3873e4d8e3830d7cfc0e45dca8f4e8671d1e63d6099ebc9cd224f52e8dbdb4fe00a89a00d33e937fd9b852ad3609c
 Size (less-704.tar.gz) = 996650 bytes
-SHA1 (patch-Makefile.in) = 552391f9dc1dcc033ba4bffdcc3c294efb9fc854
+SHA1 (patch-Makefile.in) = 5154283bd07462228c06cb76526aaa2b1dfe94cd

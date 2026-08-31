@@ -627,9 +627,19 @@ ${WRKDIR}:
 # various packages such as databases/mysql57-client will not find their
 # include files. See also checkarg_sane_absolute_path in bootstrap/bootstrap.
 .PHONY: _check-wrkdir-canonical
+.if ${OPSYS} == "OpenVMS"
+# GNV's canonical pwd -P spelling contains an OpenVMS device name such as
+# DISK$PKGSRC.  It is equivalent to the POSIX logical-name spelling used by
+# bmake, but the '$' would be parsed as a make variable and the strings cannot
+# be compared textually.  OpenVMS resolves the path at each use, so the
+# generic symlink check is not applicable here.
+_check-wrkdir-canonical:
+	@${TRUE}
+.else
 _check-wrkdir-canonical: ${WRKDIR}
 	${RUN} cd ${WRKDIR}; d=`exec pwd -P`; ${TEST} "$$d" = ${WRKDIR}	\
 	|| ${FAIL_MSG} "[bsd.pkg.mk] The path to WRKDIR ${WRKDIR} must be canonical ($$d)."
+.endif
 
 # Create a symlink from ${WRKDIR} to the package directory if
 # CREATE_WRKDIR_SYMLINK is "yes".

@@ -11,5 +11,11 @@ PKG_SUGGESTED_OPTIONS=		regexp
 CONFIGURE_ARGS+= 	--with-regex=pcre
 .  include "../../devel/pcre/buildlink3.mk"
 .elif !empty(PKG_OPTIONS:Mregexp)
+.  if ${OPSYS} == "OpenVMS"
+# VSI OpenVMS does not provide POSIX regcomp.  Less ships the compatible
+# V8-regcomp implementation in regexp.c, so select it for the regexp option.
+CONFIGURE_ARGS+= 	--with-regex=regcomp-local
+.  else
 CONFIGURE_ARGS+= 	--with-regex=posix
+.  endif
 .endif
