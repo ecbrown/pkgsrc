@@ -71,7 +71,9 @@ PERL5_VMS_PREFIX=	${PERL5_VMS_PREFIX_CMD:sh}
 CONFIGURE_ARGS.OpenVMS+=	-Dprefix=${PERL5_VMS_PREFIX}
 
 do-configure:
-	${RUN} cd ${WRKSRC} && /bin/dcl '@configure.com "-des" ${CONFIGURE_ARGS}'
+	${RUN} cd ${WRKSRC} && { configure_status=0; \
+	/bin/dcl '@configure.com "-des" ${CONFIGURE_ARGS}' || configure_status=$$?; \
+	test $$configure_status -eq 0 || test $$configure_status -eq 1; }
 
 do-build:
 	${RUN} cd ${WRKSRC} && /bin/dcl 'MMS all'
