@@ -37,7 +37,11 @@ WRAPPER_BINDIR=		${WRAPPER_DIR}/bin
 WRAPPER_DIR=		${WRKDIR}/.wrapper
 WRAPPER_BINDIR=		${WRAPPER_DIR}/bin
 WRAPPER_TMPDIR=		${WRAPPER_DIR}/tmp
+.if ${OPSYS} == "OpenVMS"
+WRAPPER_SRCDIR=		${PKGSRCDIR}/mk/wrapper
+.else
 WRAPPER_SRCDIR=		${.CURDIR}/../../mk/wrapper
+.endif
 WRAPPER_BIN_SH?=	${SH}
 WRAPPER_SHELL?=		${WRAPPER_BIN_SH}
 .endif
