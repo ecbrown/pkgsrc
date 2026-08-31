@@ -245,10 +245,17 @@ distribution-patch-message:
 do-distribution-patch:
 .for i in ${PATCHFILES}
 	@${ECHO_PATCH_MSG} "Applying distribution patch ${i}"
+.if ${OPSYS} == "OpenVMS"
+	${RUN} cd ${_DISTDIR};						\
+	${PATCH_DIST_CAT.${i:S/=/--/}} > ${WRKDIR}/.patch-dist-${i:Q} && \
+	${PATCH} ${PATCH_DIST_ARGS.${i:S/=/--/}} < ${WRKDIR}/.patch-dist-${i:Q} || \
+		{ ${ERROR_MSG} "Patch ${i} failed"; ${_PKGSRC_PATCH_FAIL}; }
+.else
 	${RUN} cd ${_DISTDIR};						\
 	${PATCH_DIST_CAT.${i:S/=/--/}} |				\
 	${PATCH} ${PATCH_DIST_ARGS.${i:S/=/--/}} ||			\
 		{ ${ERROR_MSG} "Patch ${i} failed"; ${_PKGSRC_PATCH_FAIL}; }
+.endif
 	${RUN} ${ECHO} ${_DISTDIR:Q}/${i:Q} >> ${_PATCH_APPLIED_FILE:Q}
 .endfor
 
