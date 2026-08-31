@@ -1,5 +1,7 @@
 # $NetBSD: options.mk,v 1.20 2022/07/23 14:41:52 wiz Exp $
 
+.include "../../mk/bsd.prefs.mk"
+
 PKG_OPTIONS_VAR=	PKG_OPTIONS.lynx
 PKG_SUPPORTED_OPTIONS=	inet6
 
@@ -13,7 +15,11 @@ PKG_OPTIONS_REQUIRED_GROUPS+=	screen
 PKG_OPTIONS_GROUP.screen=	curses wide-curses slang
 PKG_OPTIONS_LEGACY_OPTS+=	ncurses:curses ncursesw:wide-curses
 
+.if ${OPSYS} == "OpenVMS"
+PKG_SUGGESTED_OPTIONS=		curses
+.else
 PKG_SUGGESTED_OPTIONS=		inet6 openssl wide-curses
+.endif
 
 .include "../../mk/bsd.options.mk"
 

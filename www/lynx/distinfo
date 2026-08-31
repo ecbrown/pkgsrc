@@ -3,5 +3,11 @@ $NetBSD: distinfo,v 1.43 2024/06/08 20:31:23 nikita Exp $
 BLAKE2s (lynx2.9.2.tar.bz2) = 1365a0fdc942144abd262abeceffb0907930550b3f002ea72f7f82d5cc77c39f
 SHA512 (lynx2.9.2.tar.bz2) = bb9ed23a5f8664ca8bccd95cc55683849aa707f601e209d84e0acaed151b78cd772316f527881022ff120049c4fc586c05d579f9d616a2b108d9ddfaa5b2159d
 Size (lynx2.9.2.tar.bz2) = 2783769 bytes
+SHA1 (patch-WWW_Library_Implementation_HTVMS__WaisUI.c) = fe2bc2d93785de53767861502fe888189c19c9e0
+SHA1 (patch-WWW_Library_Implementation_www__tcp.h) = 6d4b5fe722d8b26bb792bc9ca9e56b62a0f4e119
 SHA1 (patch-aa) = 85e76c4b2708e01dd1abdc1af764a067bd83bcb9
 SHA1 (patch-ab) = 26fab3bd426a76df530e6780eefe36464059bc6a
+SHA1 (patch-src_HTFWriter.c) = a0d8d819077bd62a39218c81b8e019a7789b09ab
+SHA1 (patch-src_LYCurses.c) = 9eef8846d53468ffb498c27ae159a25af8e4e615
+SHA1 (patch-src_LYCurses.h) = 5a03b08edb4e81d12b2384c51215f4afdd4828ad
+SHA1 (patch-src_LYUtils.c) = e5cecce97752909e5c6f5e67a36bdcd8f5a4a8db
