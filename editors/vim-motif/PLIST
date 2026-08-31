@@ -6,6 +6,7 @@ bin/rgvim
 bin/rview
 bin/rvim
 bin/vim
+${PLIST.vms}bin/vim.exe
 bin/vimdiff
 bin/vimtutor
 man/man1/gview.1

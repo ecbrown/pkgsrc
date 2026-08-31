@@ -17,8 +17,25 @@ CONFIGURE_ARGS+=	--with-tlib=${BUILDLINK_LIBNAME.termcap}
 CONFIGURE_ENV+=		MOTIFBASE=${MOTIFBASE}
 MAKE_ENV+=		MOTIFBASE=${MOTIFBASE}
 
+.if ${OPSYS} == "OpenVMS"
+INSTALLATION_DIRS+=	bin
+PLIST_VARS+=		vms
+PLIST.vms=		yes
+
+do-build:
+	cd ${WRKSRC} && \
+		/bin/dcl 'MMS/DESCRIP=Make_vms.mms/IGNORE=WARNING/MACRO=(GUI=YES)'
+
+do-install:
+	${INSTALL_PROGRAM} ${WRKSRC}/X86_64/vim.exe \
+		${DESTDIR}${PREFIX}/bin/vim.exe
+	cd ${DESTDIR}${PREFIX}/bin && ${LN} vim.exe vim.
+	${INSTALL_SCRIPT} ${WRKSRC}/vimtutor \
+		${DESTDIR}${PREFIX}/bin/vimtutor
+.else
 BUILD_TARGET=		vim
 INSTALL_TARGET=		installvimbin installvimdiff installtutorbin
+.endif
 
 INSTALLATION_DIRS+=	${PKGMANDIR}/man1
 
@@ -34,10 +51,16 @@ post-install:
 	${RM} -f ${DESTDIR}${PREFIX}/bin/${f}
 	${LN} -s vim ${DESTDIR}${PREFIX}/bin/${f}
 .endfor
+.if ${OPSYS} == "OpenVMS"
+	${RM} -f ${DESTDIR}${PREFIX}/bin/vimdiff
+	${LN} vim ${DESTDIR}${PREFIX}/bin/vimdiff
+.endif
 
+.if ${OPSYS} != "OpenVMS"
 .include "../../converters/libiconv/buildlink3.mk"
 .include "../../devel/gettext-lib/buildlink3.mk"
 .include "../../x11/libXpm/buildlink3.mk"
 .include "../../mk/motif.buildlink3.mk"
 .include "../../mk/termcap.buildlink3.mk"
+.endif
 .include "../../mk/bsd.pkg.mk"

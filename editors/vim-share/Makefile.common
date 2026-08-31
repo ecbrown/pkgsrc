@@ -18,12 +18,25 @@ FORTIFY_SUPPORTED=	no
 
 .include "../../mk/bsd.prefs.mk"
 
+.if ${OPSYS} == "OpenVMS"
+NO_CONFIGURE=		yes
+
+# Vim has a native OpenVMS MMS build.  Compile the pkgsrc installation paths
+# into the image so it can find its runtime files without login-specific
+# VIM and VIMRUNTIME logical names.
+SUBST_CLASSES+=		vms-paths
+SUBST_STAGE.vms-paths=	pre-build
+SUBST_FILES.vms-paths=	Make_vms.mms
+SUBST_VARS.vms-paths=	PREFIX VIM_SUBDIR
+.else
+GNU_CONFIGURE=		yes
+.endif
+
 MAINTAINER=		morr@NetBSD.org
 HOMEPAGE=		https://www.vim.org/
 LICENSE=		vim-license OR gnu-gpl-v2
 
 WRKSRC=			${WRKDIR}/${DISTNAME}/src
-GNU_CONFIGURE=		yes
 USE_LANGUAGES+=		c
 
 # http://www.netbsd.org/cgi-bin/query-pr-single.pl?number=38710
@@ -63,7 +76,11 @@ ALTERNATIVES_SRC=
 
 SUBST_CLASSES+=		sysconfdir
 SUBST_FILES.sysconfdir=	feature.h
+.if ${OPSYS} == "OpenVMS"
+SUBST_STAGE.sysconfdir=	pre-build
+.else
 SUBST_STAGE.sysconfdir=	pre-configure
+.endif
 SUBST_VARS.sysconfdir=	PKG_SYSCONFDIR
 
 post-patch:
