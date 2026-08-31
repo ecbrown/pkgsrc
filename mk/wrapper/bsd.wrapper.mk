@@ -594,7 +594,12 @@ ${_WRAP_REORDERLIBS}: ${_WRAP_GEN_REORDER}
 .endif
 
 .  if !target(${_WRAP_SHELL_LIB})
-${_WRAP_SHELL_LIB}: ${.CURDIR}/../../mk/scripts/shell-lib
+.    if ${OPSYS} == "OpenVMS"
+_WRAP_SHELL_LIB_SOURCE=	${PKGSRCDIR}/mk/scripts/shell-lib
+.    else
+_WRAP_SHELL_LIB_SOURCE=	${.CURDIR}/../../mk/scripts/shell-lib
+.    endif
+${_WRAP_SHELL_LIB}: ${_WRAP_SHELL_LIB_SOURCE}
 	${RUN} ${MKDIR} ${.TARGET:H}
 	${RUN} ${CAT} ${.ALLSRC} | ${_WRAP_SH_CRUNCH_FILTER} > ${.TARGET}
 .  endif
