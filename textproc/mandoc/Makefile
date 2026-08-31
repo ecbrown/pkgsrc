@@ -29,6 +29,9 @@ post-extract:
 	${ECHO} PREFIX=${PREFIX} > ${WRKSRC}/configure.local
 	${ECHO} CFLAGS=\"${CFLAGS:Q}\" >> ${WRKSRC}/configure.local
 	${ECHO} LDFLAGS=\"${LDFLAGS:Q}\" >> ${WRKSRC}/configure.local
+	if [ "${OPSYS}" = "OpenVMS" ]; then \
+		${ECHO} LDADD=\"-lnbcompat\" >> ${WRKSRC}/configure.local; \
+	fi
 	${ECHO} INSTALL=\"${INSTALL:Q}\" >> ${WRKSRC}/configure.local
 	${ECHO} INSTALL_PROGRAM=\"${INSTALL_PROGRAM:Q}\" >> ${WRKSRC}/configure.local
 	${ECHO} INSTALL_LIB=\"${INSTALL_DATA:Q}\" >> ${WRKSRC}/configure.local
@@ -38,5 +41,8 @@ post-extract:
 	${ECHO} MANM_ROFF="mandoc-roff" >> ${WRKSRC}/configure.local
 	${ECHO} BINM_SOELIM="msoelim" >> ${WRKSRC}/configure.local
 
+.if ${OPSYS} == "OpenVMS"
+.include "../../pkgtools/libnbcompat/buildlink3.mk"
+.endif
 .include "../../devel/zlib/buildlink3.mk"
 .include "../../mk/bsd.pkg.mk"
