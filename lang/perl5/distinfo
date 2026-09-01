@@ -10,6 +10,7 @@ BLAKE2s (perl-5.44.0.tar.gz) = 86f9f491bed4ca44cfbb562dc74aeac9cae42568c7c47f3d6
 SHA512 (perl-5.44.0.tar.gz) = 99116b2c08186d7d20352473152da9c0a0dc5ba24f1cade9950e9e01694e52809d79c73caa5ae2f2f9087488822c939cff555b5b613e5a2c43fb1dadc1aa860d
 Size (perl-5.44.0.tar.gz) = 21265451 bytes
 SHA1 (patch-Configure) = 7e04b70aefcb66399679582a2f2e95306cf1e47b
+SHA1 (patch-Configure.com) = bc1554d3e28888439a9ab8d2a96b8a85f7ca50d1
 SHA1 (patch-Makefile.SH) = 0ac10d14a36c5f78611776413fed14413f50046e
 SHA1 (patch-cpan_ExtUtils-MakeMaker_lib_ExtUtils_MM__BeOS.pm) = 79e5aeccfa272ca5ec08bffc616d8053ae90ac51
 SHA1 (patch-cpan_ExtUtils-MakeMaker_lib_ExtUtils_MM__Unix.pm) = 996556f221eb0c75c316315462bf6cea6746e030
