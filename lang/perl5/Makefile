@@ -50,12 +50,16 @@ PERL5_API_VERS_cmd=	\
 
 .include "../../mk/compiler.mk"
 
+PERL5_FILESDIR=	${FILESDIR}
 .if ${OPSYS} == "OpenVMS"
 # OpenVMS ships a native Configure.com and MMS description.  The POSIX
 # Configure script cannot create a usable VMS shareable image.
 HAS_CONFIGURE=		yes
 CONFIGURE_SCRIPT=	./configure.com
 MAKE_FILE=		Descrip.MMS
+# Use the logical pkgsrc root directly; ${FILESDIR} may retain a
+# device-qualified .CURDIR spelling that GNV cannot reopen.
+PERL5_FILESDIR=	${PKGSRCDIR}/lang/perl5/files
 PATCH_ARGS=		-d ${WRKDIR}/${DISTNAME} --forward --quiet \
 				-E ${PATCH_STRIP:Q}
 PATCH_DIST_ARGS=	-d ${WRKDIR}/${DISTNAME} --forward --quiet \
@@ -251,7 +255,7 @@ SUBST_FILES.dirmode=	install_lib.pl
 SUBST_SED.dirmode=	-e "s/755/${PKGDIRMODE}/g;/umask(/d"
 
 post-extract:
-	${CP} ${FILESDIR}/Policy.sh ${WRKSRC}/Policy.sh
+	${CP} ${PERL5_FILESDIR}/Policy.sh ${WRKSRC}/Policy.sh
 
 pre-configure:
 	${FIND} ${WRKSRC} -name "*.orig" -type f -exec rm -f {} \;
@@ -260,7 +264,7 @@ post-build:
 	${SED}	-e "s,@PERL5@,"${PERL5:Q}",g"				\
 		-e "s,@SH@,"${SH:Q}",g"					\
 		-e "s,@PKGMANDIR@,"${PKGMANDIR}",g"			\
-		${FILESDIR}/perllink.in > ${WRKDIR}/perllink.sh
+		${PERL5_FILESDIR}/perllink.in > ${WRKDIR}/perllink.sh
 
 INSTALLATION_DIRS=	bin ${PKGMANDIR}/man1
 PERL5_PACKLIST_DIR_cmd=	. ${WRKSRC}/config.sh;	echo $$installarchlib
@@ -272,6 +276,7 @@ PERL5_PACKLIST_DESTDIR=	no
 # itself at the pkgsrc staging path and rewrite those logical entries to the
 # eventual package prefix before pkgsrc generates the PLIST.
 PERL5_PACKLIST_DIR=	${PREFIX}/lib/VMS_x86_64/${PERL5_API_VERS:S/./_/g}
+PLIST_AWK+=		-f ${PERL5_FILESDIR}/plist-vms.awk
 .endif
 FILES_SUBST+=		PERL5_COMMENT=\#
 FILES_SUBST+=		PERL5_PACKLIST=
@@ -282,20 +287,37 @@ perl5-post-install:
 .if ${OPSYS} == "OpenVMS"
 	${INSTALL_DATA_DIR} ${DESTDIR}${PREFIX}/bin
 	${LN} -sf ../perl.exe ${DESTDIR}${PREFIX}/bin/perl
+	# OpenVMS' installperl emits a trailing version marker for these
+	# extensionless files and consequently misses the POSIX source names.
+	${INSTALL_DATA} ${WRKSRC}/lib/ExtUtils/typemap \
+		${DESTDIR}${PREFIX}/lib/ExtUtils/typemap
+	${INSTALL_DATA} ${WRKSRC}/lib/ExtUtils/xsubpp \
+		${DESTDIR}${PREFIX}/lib/ExtUtils/xsubpp
+	${INSTALL_DATA} ${WRKSRC}/lib/Unicode/README \
+		${DESTDIR}${PREFIX}/lib/Unicode/README
 .endif
 	${RUN}if ${TEST} -x ${DESTDIR}${PREFIX}/bin/a2p; then		\
 		strip ${DESTDIR}${PREFIX}/bin/a2p;			\
 	fi
 	${INSTALL_SCRIPT} ${WRKDIR}/perllink.sh 			\
 		${DESTDIR}${PERL5_PERLBASE}/bin/perllink
-	${INSTALL_MAN} ${FILESDIR}/perllink.1				\
+	${INSTALL_MAN} ${PERL5_FILESDIR}/perllink.1				\
 		${DESTDIR}${PERL5_PERLBASE}/${PKGMANDIR}/man1/perllink.1
 	${RM} -f ${DESTDIR}${PREFIX}/bin/perllink			\
 		${DESTDIR}${PREFIX}/${PKGMANDIR}/man1/perllink.1
+.if ${OPSYS} == "OpenVMS"
+	# pkg_create on VMS cannot lstat a staged POSIX symlink.  Install regular
+	# copies at the two convenience paths instead.
+	${INSTALL_SCRIPT} ${WRKDIR}/perllink.sh 			\
+		${DESTDIR}${PREFIX}/bin/perllink
+	${INSTALL_MAN} ${PERL5_FILESDIR}/perllink.1 			\
+		${DESTDIR}${PREFIX}/${PKGMANDIR}/man1/perllink.1
+.else
 	${LN} -s ${PERL5_PERLBASE}/bin/perllink 			\
 		${DESTDIR}${PREFIX}/bin/perllink
 	${LN} -s ${PERL5_PERLBASE}/${PKGMANDIR}/man1/perllink.1		\
 		${DESTDIR}${PREFIX}/${PKGMANDIR}/man1/perllink.1
+.endif
 .if ${OPSYS} == "Haiku"
 	${CHMOD} a+x ${DESTDIR}${PREFIX}/bin/perl
 .endif
@@ -308,6 +330,7 @@ perl5-packlist-vms:
 	${RUN} \
 	packlist=${DESTDIR}${PERL5_PACKLIST_DIR}/${PERL5_PACKLIST}; \
 	${SED} -e 's|^/perl_root|${PREFIX}|' \
+		-e 's|\. type=file| type=file|' \
 		-e '/\/pods\/perltoc\.pod /d' \
 		-e '/\/pods\/perluniprops\.pod /d' \
 		"$${packlist}" > "$${packlist}.new" && \

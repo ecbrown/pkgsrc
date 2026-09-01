@@ -694,7 +694,15 @@ ${.CURDIR}/${WRKDIR_BASENAME}:
 #	privileges.
 #
 
-_ROOT_CMD=	cd ${.CURDIR} &&					\
+# OpenVMS GNV can translate .CURDIR's device-qualified spelling to an
+# unusable /DISKKGSRC path when a privileged phase is reinvoked.
+.if ${OPSYS} == "OpenVMS"
+_ROOT_CMD_CWD=	${BUILD_DIR}
+.else
+_ROOT_CMD_CWD=	${.CURDIR}
+.endif
+
+_ROOT_CMD=	cd ${_ROOT_CMD_CWD} &&					\
 		${PKGSRC_SETENV} ${PKGSRC_MAKE_ENV}			\
 			PATH=${_PATH_ORIG:Q}:${SU_CMD_PATH_APPEND:Q}	\
 		${MAKE} ${MAKEFLAGS} _PKGSRC_BARRIER=yes		\

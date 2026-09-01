@@ -93,6 +93,17 @@ PLIST=		${WRKDIR}/.PLIST
 # The nokeywords PLIST file strips out any pkg_create(1) "@" commands.
 _PLIST_NOKEYWORDS=	${PLIST}_nokeywords
 
+# OpenVMS' POSIX path translator does not reliably canonicalize a logical
+# directory followed by ".." components.  In particular, a path such as
+# ${.CURDIR}/../../mk/plist can be translated to /DISKKGSRC when the pkgsrc
+# tree is on a logical volume.  Use the pkgsrc root on VMS; retain the
+# relative form everywhere else.
+.if ${OPSYS} == "OpenVMS"
+_PLIST_MKDIR=		${PKGSRCDIR}/mk/plist
+.else
+_PLIST_MKDIR=		${.CURDIR}/../../mk/plist
+.endif
+
 ######################################################################
 
 .if (defined(USE_IMAKE) || !empty(USE_TOOLS:Mimake))
@@ -109,7 +120,7 @@ _LIBTOOL_EXPAND=							\
 		BASENAME=${BASENAME:Q} DIRNAME=${DIRNAME:Q}		\
 		PWD_CMD=${PWD_CMD:Q} 					\
 		SHLIB_TYPE=${SHLIB_TYPE:Q}				\
-	${SH} ${.CURDIR}/../../mk/plist/libtool-expand
+	${SH} ${_PLIST_MKDIR}/libtool-expand
 
 .if !defined(_IGNORE_INFO_PATH)
 .  for _dir_ in ${IGNORE_INFO_DIRS}
@@ -196,30 +207,30 @@ _PLIST_1_AWK+=		-f ${PKGSRCDIR}/mk/plist/plist-functions.awk
 _PLIST_1_AWK+=		-f ${PKGSRCDIR}/mk/plist/plist-subst.awk
 _PLIST_1_AWK+=		-f ${PKGSRCDIR}/mk/plist/plist-macros.awk
 
-_PLIST_AWK+=		-f ${.CURDIR}/../../mk/plist/plist-functions.awk
-_PLIST_AWK+=		-f ${.CURDIR}/../../mk/plist/plist-locale.awk
-_PLIST_AWK+=		-f ${.CURDIR}/../../mk/plist/plist-gnu.awk
-_PLIST_AWK+=		-f ${.CURDIR}/../../mk/plist/plist-info.awk
-_PLIST_AWK+=		-f ${.CURDIR}/../../mk/plist/plist-man.awk
-_PLIST_AWK+=		-f ${.CURDIR}/../../mk/plist/plist-libtool.awk
+_PLIST_AWK+=		-f ${_PLIST_MKDIR}/plist-functions.awk
+_PLIST_AWK+=		-f ${_PLIST_MKDIR}/plist-locale.awk
+_PLIST_AWK+=		-f ${_PLIST_MKDIR}/plist-gnu.awk
+_PLIST_AWK+=		-f ${_PLIST_MKDIR}/plist-info.awk
+_PLIST_AWK+=		-f ${_PLIST_MKDIR}/plist-man.awk
+_PLIST_AWK+=		-f ${_PLIST_MKDIR}/plist-libtool.awk
 .if ${OPSYS} == "Cygwin"
-_PLIST_AWK+=		-f ${.CURDIR}/../../mk/plist/plist-cygwin.awk
+_PLIST_AWK+=		-f ${_PLIST_MKDIR}/plist-cygwin.awk
 .endif
 _PLIST_AWK+=		${PLIST_AWK}
-_PLIST_AWK+=		-f ${.CURDIR}/../../mk/plist/plist-default.awk
+_PLIST_AWK+=		-f ${_PLIST_MKDIR}/plist-default.awk
 
-_PLIST_INFO_AWK+=	-f ${.CURDIR}/../../mk/plist/plist-functions.awk
-_PLIST_INFO_AWK+=	-f ${.CURDIR}/../../mk/plist/plist-info.awk
+_PLIST_INFO_AWK+=	-f ${_PLIST_MKDIR}/plist-functions.awk
+_PLIST_INFO_AWK+=	-f ${_PLIST_MKDIR}/plist-info.awk
 
 _PLIST_SHLIB_AWK=	-f ${_SHLIB_AWKFILE.${SHLIB_TYPE}}
-_SHLIB_AWKFILE.ECOFF=	${.CURDIR}/../../mk/plist/shlib-elf.awk
-_SHLIB_AWKFILE.ELF=	${.CURDIR}/../../mk/plist/shlib-elf.awk
-_SHLIB_AWKFILE.SOM=	${.CURDIR}/../../mk/plist/shlib-som.awk
-_SHLIB_AWKFILE.aixlib=	${.CURDIR}/../../mk/plist/shlib-elf.awk
-_SHLIB_AWKFILE.a.out=	${.CURDIR}/../../mk/plist/shlib-aout.awk
-_SHLIB_AWKFILE.PEwin=	${.CURDIR}/../../mk/plist/shlib-pe.awk
-_SHLIB_AWKFILE.dylib=	${.CURDIR}/../../mk/plist/shlib-dylib.awk
-_SHLIB_AWKFILE.none=	${.CURDIR}/../../mk/plist/shlib-none.awk
+_SHLIB_AWKFILE.ECOFF=	${_PLIST_MKDIR}/shlib-elf.awk
+_SHLIB_AWKFILE.ELF=	${_PLIST_MKDIR}/shlib-elf.awk
+_SHLIB_AWKFILE.SOM=	${_PLIST_MKDIR}/shlib-som.awk
+_SHLIB_AWKFILE.aixlib=	${_PLIST_MKDIR}/shlib-elf.awk
+_SHLIB_AWKFILE.a.out=	${_PLIST_MKDIR}/shlib-aout.awk
+_SHLIB_AWKFILE.PEwin=	${_PLIST_MKDIR}/shlib-pe.awk
+_SHLIB_AWKFILE.dylib=	${_PLIST_MKDIR}/shlib-dylib.awk
+_SHLIB_AWKFILE.none=	${_PLIST_MKDIR}/shlib-none.awk
 
 ######################################################################
 
