@@ -1,0 +1,316 @@
+	Explanation of where the installed files will end up
+	----------------------------------------------------
+
+[ This document was written in response to all the confusion about where
+the installed emacs really ends up, and what all those weird references
+in some files really mean. ]
+
+This document should be read by anyone who is so much used to the way
+Emacs 18 is installed on VMS that he or she gets confused how things
+are done with Emacs 19.
+
+With Emacs 18, there was one directory tree, with objects and executables
+being created, linked and run in.  I have changed this behavior.  With
+Emacs 19, the binaries are by default copied to another directory tree,
+with SYS$SYSDEVICE:[GNU] as the root (because that is the only disk that
+is guaranteed to exist on all systems).
+
+Some people will maybe say that this is a very UNIXoid idea, because
+on UNIX, programs are most often installed on /usr/local/bin, and some
+libraries somewhere under /usr/local/lib (at least, this is how it's
+done on BSD and BSD-derived systems, which are the ones I know).  But
+if you think a few minutes, you'll find that this is the way things are
+done by Digital as well.  All programs provided by digital are put in
+SYS$SYSTEM: and all libraries in SYS$LIBRARY:.  Also, startup files
+are put in SYS$COMMON:[SYS$STARTUP] since VMS 5.0 (I think...).
+
+Now, I was too much a coward to put things in SYS$SYSTEM: and SYS$LIBRARY:,
+and also, I was recommended against by a friend who is a system manager.
+The solution was, as I said, to put almost everything under
+SYS$SYSDEVICE:[GNU].
+
+This document is in four parts:  "How things are done" tells you more
+about the directory structure.  "How to change things" tells you how
+to configure the directory structure to what you really want.  It includes
+some examples of how you can do things.  "How files are generated" tells
+you exactly that, and is really a description of the inner guts of configure.
+Last, but not least, "The importance of being installed" tells you
+something quite important.
+
+			How things are done
+			-------------------
+
+There are many things to keep track of when building Emacs.  Among those
+things are the directories where Emacs is compiled, installed, and where
+the source can be found.  The different directories have special names so
+they can be easy to identify.  Here is the list of directory names and
+their intended use:
+
+	Where to find the source:
+
+	srcdir		This is most often determined automagically.
+			For the ease of expression, there are some
+			extra symbols called srcdir_dev and srcdir_dir.
+			I assume you understand what it means.
+
+	Where to install thing which might be regarded as common:
+
+	prefix		The default location for installation.  Everything
+			is placed in subdirectories of this directory.
+	exec_prefix	Like `prefix', but used for architecture-specific
+			files.
+
+	bindir		Where to install Emacs and other binaries that
+			people will want to run directly (like etags).
+			This is usually built on `exec_prefix'
+
+	datadir		Where to install architecture-independent file.
+
+	statedir	Where to install and expect the files which Emacs
+			modifies as it runs.  This is most probably never
+			really used on VMS, but I won't bet on it.
+			This is usually built on `prefix'.
+
+	libdir		Where to install and expect executables to be run
+			by Emacs rather than directly by users, and other
+			architecture-dependent data.  `archlibdir' is
+			usually a subdirectory of this.  This is usually
+			built on `prefix'.
+
+	mandir		Where to install Emacs's help files.  Built on
+			`prefix'.
+
+	infodir		Where to install and expect the info files describing
+			Emacs.  Built on `prefix'.
+
+	Where to install Emacs-specific things:
+
+	lispdir		Where to install the lisp files distributed with
+			Emacs.  This includes the Emacs version, so that
+			the lisp files for different versions of Emacs
+			will install themselves in separate directories.
+			Built on `datadir'.
+
+	locallisppath	Directories Emacs should search for lisp files
+			specific to your site (i.e. customizations),
+			before consulting `lispdir'.  This should be a
+			comma-separated list on directories.
+
+	etcdir		Where to install the other architecture-independent
+			data files distributed with Emacs (like the tutorial)
+			This path suually includes the Emacs version number,
+			so the data files for multiple version of Emacs may
+			be installed at once.
+
+	lockdir		Where to create and expect the locking directory,
+			where the Emacs locking code keeps track of which
+			files are currently being edited.
+
+	archlibdir	Where to put executables to be run by Emacs rather
+			than the user.  This path usually includes Emacs
+			version and configuration name, so that multiple
+			configurations for multiple versions of Emacs may
+			be installed at once.
+
+	vmslibdir	Where to install VMS-specific files.  This is
+			usually built on `libdir'.
+
+	startupdir	Where to install the startup script.
+
+	vuelibdir	Where to install the DECWindows vue script.
+
+Those names define these directories by default:
+
+	prefix		SYS$SYSDEVICE:[GNU]
+	exec_prefix	SYS$SYSDEVICE:[GNU]		(copy of prefix)
+	bindir		SYS$SYSDEVICE:[GNU.BIN]		(built on exec_prefix)
+	datadir		SYS$SYSDEVICE:[GNU.LIB]		(built on prefix)
+	statedir	SYS$SYSDEVICE:[GNU.LIB]		(built on prefix)
+	libdir		SYS$SYSDEVICE:[GNU.LIB]		(built on exec_prefix)
+	mandir		SYS$SYSDEVICE:[GNU.HELP]	(build on prefix)
+	infodir		SYS$SYSDEVICE:[GNU.INFO]	(build on prefix)
+	lispdir		SYS$SYSDEVICE:[GNU.LIB.EMACS.version.LISP]
+							(build on datadir)
+	locallisppath	SYS$SYSDEVICE:[GNU.LIB.EMACS.SITE-LISP]
+							(build on datadir)
+	etcdir		SYS$SYSDEVICE:[GNU.LIB.EMACS.version.ETC]
+							(build on datadir)
+	lockdir		SYS$SYSDEVICE:[GNU.LIB.EMACS.LOCK]
+							(build on statedir)
+	archlibdir	SYS$SYSDEVICE:[GNU.LIB.EMACS.version.configuration]
+							(build on libdir)
+	vmslibdir	SYS$SYSDEVICE:[GNU.LIB.EMACS.VMS]
+							(build on libdir)
+	startupdir	SYS$COMMON:[SYS$STARTUP]
+	vuelibdir	SYS$COMMON:[VUE$LIBRARY.USER]
+
+When you select to configure with --RUN-IN-PLACE, they become (assuming
+your source tree is under srcdir_dev:[srcdir_dir]):
+
+	prefix		SYS$SYSDEVICE:[GNU]
+	exec_prefix	SYS$SYSDEVICE:[GNU]		(copy of prefix)
+	bindir		SYS$SYSDEVICE:[GNU.BIN]		(built on exec_prefix)
+	datadir		SYS$SYSDEVICE:[GNU.LIB]		(built on prefix)
+	statedir	SYS$SYSDEVICE:[GNU.LIB]		(built on prefix)
+	libdir		SYS$SYSDEVICE:[GNU.LIB]		(built on exec_prefix)
+	mandir		SYS$SYSDEVICE:[GNU.HELP]	(build on prefix)
+	infodir		srcdir_dev:[srcdir_dir.INFO]
+	lispdir		srcdir_dev:[srcdir_dir.LISP]
+	locallisppath	srcdir_dev:[srcdir_dir.SITE-LISP]
+	etcdir		srcdir_dev:[srcdir_dir.ETC]
+	lockdir		srcdir_dev:[srcdir_dir.LOCK]
+	archlibdir	SYS$SYSDEVICE:[GNU.LIB.EMACS.version.configuration]
+							(build on libdir)
+	vmslibdir	srcdir_dev:[srcdir_dir.VMS]
+	startupdir	SYS$COMMON:[SYS$STARTUP]
+	vuelibdir	SYS$COMMON:[VUE$LIBRARY.USER]
+
+According to the UNIX makefile, archlibdir should be defined as
+srcdir_dev:[srcdir_dir.LIB-SRC], but I can't really see this working well,
+especially in networks with several different CPUs connected to it.
+With VMS, we have both VAX and AXP.
+
+--RUN-IN-PLACE is really a misleading option, which fools you into thinking
+Emacs will be installed in the source tree.  As you can see above, this is
+simply not true.
+
+When you select to configure with --SINGLE-TREE, they become:
+
+	prefix		SYS$SYSDEVICE:[GNU]
+	exec_prefix	SYS$SYSDEVICE:[GNU]		(copy of prefix)
+	bindir		SYS$SYSDEVICE:[GNU.BIN.configuration]
+							(built on exec_prefix)
+	datadir		SYS$SYSDEVICE:[GNU.COMMON]	(built on prefix)
+	statedir	SYS$SYSDEVICE:[GNU.COMMON]	(built on prefix)
+	libdir		SYS$SYSDEVICE:[GNU.BIN.configuration]
+							(copy of bindir)
+	mandir		SYS$SYSDEVICE:[GNU.HELP]	(build on prefix)
+	infodir		SYS$SYSDEVICE:[GNU.INFO]	(built on prefix)
+	lispdir		SYS$SYSDEVICE:[GNU.COMMON.LISP]	(build on prefix)
+	locallisppath	SYS$SYSDEVICE:[GNU.COMMON.SITE-LISP]
+							(built on prefix)
+	etcdir		SYS$SYSDEVICE:[GNU.COMMON.DATA] (built on prefix)
+	lockdir		SYS$SYSDEVICE:[GNU.COMMON.LOCK]	(built on prefix)
+	archlibdir	SYS$SYSDEVICE:[GNU.BIN.configuration.ETC]
+							(built on libdir)
+	vmslibdir	SYS$SYSDEVICE:[GNU.BIN.configuration.VMS]
+							(built on libdir)
+	startupdir	SYS$SYSDEVICE:[GNU]		(built on prefix)
+	vuelibdir	SYS$SYSDEVICE:[GNU]		(built on prefix)
+
+			How to change things
+			--------------------
+
+Of course, there is a way to change the value of the names listed above,
+and that's to use the corresponding options when you use the configuration
+script.  The fact that some directories are built on others means that
+you don't have to change all directories that build on another.  This
+is an example:
+
+	@srcdir_dev:[srcdir_dir]CONFIGURE -
+		--EXEC_PREFIX=SYS$SYSDEVICE:[GNU.VAX]
+
+Which means that all the directories derived from exec_prefix will be
+changed accordingly, like this:
+
+	bindir		SYS$SYSDEVICE:[GNU.VAX.BIN]
+	libdir		SYS$SYSDEVICE:[GNU.VAX.LIB]
+	archlibdir	SYS$SYSDEVICE:[GNU.VAX.LIB.EMACS.version.configuration]
+	vmslibdir	SYS$SYSDEVICE:[GNU.VAX.LIB.EMACS]
+
+If you're stuck with how things are done the old days (by your own choice
+or someone else's) and absolutelly NEED all of Emacs (including source)
+to in the tree EMACS_LIBRARY:[000000...], you can do the following:
+
+	$ ! define the logical name EMACS_LIBRARY to point at the source:
+	$ define/trans=conc EMACS_LIBRARY your_device:[dir.]
+	$ set def EMACS_LIBRARY:[000000]
+	$ create CONFIGURE.ARGS
+	--RUN-IN-PLACE --PREFIX=EMACS_LIBRARY:[000000] 
+	--EXEC_PREFIX=EMACS_LIBRARY:[000000] --BINDIR=EMACS_LIBRARY:[SRC]
+	--LIBDIR=EMACS_LIBRARY:[LIB-SRC] --ARCHLIBDIR=EMACS_LIBRARY:[LIB-SRC]
+	--MANDIR=EMACS_LIBRARY:[ETC] --STARTUPDIR=EMACS_LIBRARY:[VMS]
+	--VUELIBDIR=EMACS_LIBRARY:[VMS]
+	$ @CONFIGURE +CONFIGURE.ARGS
+
+You might wonder about the +CONFIGURE.ARGS part.  It deals with the problem
+that DCL procedure files won't take more than 8 arguments, and we want to
+give it 9 arguments.  Thus, we put the arguments in a file, and give the
+argument +file to tell CONFIGURE where to get additional arguments.  This
+can be intermixed with other arguments, like this:
+
+	@CONFIGURE +file --RUN-IN-PLACE
+
+[  Warning:  I haven't tested this, so I'm not sure about the accuracy.
+   --- Richard Levitte.  ]
+
+In any case, the example given above should setup the directory structure
+like this:
+
+	prefix		EMACS_LIBRARY:[000000]
+	exec_prefix	EMACS_LIBRARY:[000000]
+	bindir		EMACS_LIBRARY:[000000]
+	datadir		EMACS_LIBRARY:[000000.COMMON]	(built on prefix)
+	statedir	EMACS_LIBRARY:[000000.COMMON]	(built on prefix)
+	libdir		EMACS_LIBRARY:[LIB-SRC]
+	mandir		EMACS_LIBRARY:[ETC]
+	infodir		EMACS_LIBRARY:[000000.INFO]	(built on srcdir)
+	lispdir		EMACS_LIBRARY:[000000.LISP]	(built on srcdir)
+	locallisppath	EMACS_LIBRARY:[000000.SITE-LISP]
+							(built on srcdir)
+	etcdir		EMACS_LIBRARY:[000000.ETC]	(built on srcdir)
+	lockdir		EMACS_LIBRARY:[000000.LOCK]	(built on srcdir)
+	archlibdir	EMACS_LIBRARY:[LIB-SRC]
+	vmslibdir	EMACS_LIBRARY:[000000.VMS]	(built on srcdir)
+	startupdir	EMACS_LIBRARY:[VMS]
+	vuelibdir	EMACS_LIBRARY:[VMS]
+
+			How files are generated
+			-----------------------
+
+CONFIGURE.COM works by generating the file CONFIG.STATUS which is a command
+file, containing all the configuration definitions that CONFIGURE.COM
+generated.
+
+As it's last action, CONFIGURE.COM simply runs CONFIG.STATUS, which processes
+a lot of template files to generate all the description files and command
+files that are needed to compile, link, and so on.  Here is the list of
+template files and the coresponding files that CONFIG.STATUS generate:
+
+	Templates.  These are in	Resulting files.  These are in
+	the srcdir directory tree:	Whatever directory tree you run
+					CONFIG.STATUS in:
+
+	DESCRIP.MMS_IN			DESCRIP.MMS
+	[.LIB-SRC]DESCRIP.MMS_IN	[.LIB-SRC]DESCRIP.MMS
+	[.OLDXMENU]DESCRIP.MMS_IN	[.OLDXMENU]DESCRIP.MMS
+	[.SRC]CONFIG.H_IN		[.SRC]CONFIG.H
+	[.SRC]DESCRIP.MMS_IN_IN		[.SRC]DESCRIP.MMS		*
+	[.VMS]COMPILE.COM_IN		[.VMS]COMPILE.COM
+	[.VMS]COMPLIBSRC.COM_IN		[.VMS]COMPLIBSRC.COM
+	[.VMS]COMPXMENU.COM_IN		[.VMS]COMPXMENU.COM
+	[.VMS]EMACS_INSTALL.COM_IN	[.VMS]EMACS_INSTALL.COM
+	[.VMS]EMACS_STARTUP.COM_IN_IN	[.VMS]EMACS_STARTUP.COM		*
+	[.VMS]EMACS_VUE.COM_IN		[.VMS]EMACS_VUE.COM
+	[.VMS]MAKEDOC.COM_IN_IN		[.VMS]MAKEDOC.COM		*
+	[.VMS]MAKEPATHS.COM_IN		[.VMS]MAKEPATHS.COM
+	[.VMS]PRECOMP.COM_IN		[.VMS]PRECOMP.COM
+	[.VMS]TEMACS.OPT_IN		[.VMS]DEF_TEMACS.OPT
+
+N.B.:  The files ending with _IN_IN (marked above with a star) are two-pass
+templates.  This means that an intermediate file ending with _IN is
+generated as well.
+
+	The importance of being installed (in contrast to Ernest)
+	---------------------------------------------------------
+
+The script EMACS_STARTUP.COM (which is installed in `startupdir') depends
+on Emacs really being installed.  This is done in one of two ways:
+
+	1)	MMS INSTALL
+
+	2)	@[.VMS]EMACS_INSTALL.COM
+
+This moves all important files to the places where Emacs expects them to be.
+
+-- Richard Levitte, levitte@e.kth.se

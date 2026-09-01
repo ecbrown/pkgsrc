@@ -115,7 +115,8 @@ write_meta_file(struct memory_file *file, struct archive *archive)
 }
 
 static void
-write_entry(struct archive *archive, struct archive_entry *entry)
+write_entry_from_path(struct archive *archive, struct archive_entry *entry,
+    const char *source_name)
 {
 	char buf[16384];
 	const char *name;
@@ -141,7 +142,7 @@ write_entry(struct archive *archive, struct archive_entry *entry)
 		return;
 	}
 
-	name = archive_entry_pathname(entry);
+	name = source_name;
 
 	if ((fd = open(name, O_RDONLY)) == -1)
 		err(2, "cannot open data file %s", name);
@@ -166,7 +167,14 @@ write_entry(struct archive *archive, struct archive_entry *entry)
 }
 
 static void
-write_normal_file(const char *name, struct archive *archive,
+write_entry(struct archive *archive, struct archive_entry *entry)
+{
+	write_entry_from_path(archive, entry, archive_entry_pathname(entry));
+}
+
+static void
+write_normal_file_path(const char *source_name, const char *archive_name,
+    struct archive *archive,
     struct archive_entry_linkresolver *resolver,
     const char *owner, const char *group)
 {
@@ -175,11 +183,11 @@ write_normal_file(const char *name, struct archive *archive,
 	struct archive_entry *entry, *sparse_entry;
 	struct stat st;
 
-	if (lstat(name, &st) == -1)
-		err(2, "lstat failed for file %s", name);
+	if (lstat(source_name, &st) == -1)
+		err(2, "lstat failed for file %s", source_name);
 
 	entry = archive_entry_new();
-	archive_entry_set_pathname(entry, name);
+	archive_entry_set_pathname(entry, archive_name);
 	archive_entry_copy_stat(entry, &st);
 
 	if (owner != NULL) {
@@ -205,9 +213,9 @@ write_normal_file(const char *name, struct archive *archive,
 	}
 
 	if ((st.st_mode & S_IFMT) == S_IFLNK) {
-		buf_len = readlink(name, buf, sizeof buf);
+		buf_len = readlink(source_name, buf, sizeof buf);
 		if (buf_len < 0)
-			err(2, "cannot read symlink %s", name);
+			err(2, "cannot read symlink %s", source_name);
 		buf[buf_len] = '\0';
 		archive_entry_set_symlink(entry, buf);
 	}
@@ -215,10 +223,20 @@ write_normal_file(const char *name, struct archive *archive,
 	archive_entry_linkify(resolver, &entry, &sparse_entry);
 
 	if (entry != NULL)
-		write_entry(archive, entry);
+		write_entry_from_path(archive, entry, source_name);
 	if (sparse_entry != NULL)
-		write_entry(archive, sparse_entry);
+		write_entry_from_path(archive, sparse_entry, source_name);
 }
+
+#ifndef __VMS
+static void
+write_normal_file(const char *name, struct archive *archive,
+    struct archive_entry_linkresolver *resolver,
+    const char *owner, const char *group)
+{
+	write_normal_file_path(name, name, archive, resolver, owner, group);
+}
+#endif
 
 static void
 make_dist(const char *pkg, const char *suffix, const package_t *plist)
@@ -229,6 +247,9 @@ make_dist(const char *pkg, const char *suffix, const package_t *plist)
 	struct archive *archive;
 	struct archive_entry *entry, *sparse_entry;
 	struct archive_entry_linkresolver *resolver;
+#ifdef __VMS
+	char *vms_cwd = NULL;
+#endif
 	
 	archive = archive_write_new();
 	archive_write_set_format_pax_restricted(archive);
@@ -292,9 +313,27 @@ make_dist(const char *pkg, const char *suffix, const package_t *plist)
 
 	for (p = plist->head; p; p = p->next) {
 		if (p->type == PLIST_FILE) {
+#ifdef __VMS
+			char *source_name;
+
+			if (vms_cwd != NULL && strcmp(vms_cwd, ".") != 0 &&
+			    p->name[0] != '/')
+				source_name = xasprintf("%s/%s", vms_cwd, p->name);
+			else
+				source_name = xstrdup(p->name);
+			write_normal_file_path(source_name, p->name, archive,
+			    resolver, owner, group);
+			free(source_name);
+#else
 			write_normal_file(p->name, archive, resolver, owner, group);
+#endif
 		} else if (p->type == PLIST_CWD) {
+#ifdef __VMS
+			free(vms_cwd);
+			vms_cwd = xstrdup(p->name);
+#else
 			chdir(p->name);
+#endif
 		} else if (p->type == PLIST_IGNORE) {
 			p = p->next;
 		} else if (p->type == PLIST_CHOWN) {
@@ -309,6 +348,10 @@ make_dist(const char *pkg, const char *suffix, const package_t *plist)
 				group = DefaultGroup;
 		}
 	}
+
+#ifdef __VMS
+	free(vms_cwd);
+#endif
 
 	entry = NULL;
 	archive_entry_linkify(resolver, &entry, &sparse_entry);

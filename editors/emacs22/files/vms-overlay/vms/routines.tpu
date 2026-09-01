@@ -1,0 +1,116 @@
+! ROUTINES.TPU -- Some commonly used TPU routines.
+! Copyright (C) 1994  the Free Software Foundation, Inc.
+!
+! Author: Richard Levitte <levitte@e.kth.se>
+!
+! This file is a part of GNU VMSLIB, the GNU library for porting GNU
+! software to VMS.
+!
+! GNU VMSLIB is free software; you can redistribute it and/or
+! modify it under the terms of the GNU General Public License
+! as published by the Free Software Foundation; either version 2
+! of the License, or (at your option) any later version.
+! 
+! GNU VMSLIB is distributed in the hope that it will be useful,
+! but WITHOUT ANY WARRANTY; without even the implied warranty of
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! GNU General Public License for more details.
+! 
+! You should have received a copy of the GNU General Public License
+! along with GNU VMSLIB; if not, write to the Free Software
+! Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+!
+! Description:
+!
+! This file contains a few usefull routines to do pattern replacement
+! and pattern removal.  This autocompiles, so what you have to do is
+! something like this:
+!
+!	edit/tpu/nosect/nodisp -
+!		/command=dev:[dir]routines.tpu -
+!		/out=dev:[dir]routines.tpu$section
+!
+! Then you can write your TPU file which uses the routines in the
+! compiled section file, and evaluate the whole thing like this:
+!
+! 	edit/tpu/section=dev:[dir]routines.tpu$section/nodisplay -
+!		/command=sys$disk:[]mycommand.tpu/out=dev:[dir]myoutput.txt -
+!		dev:[dir]myinput.txt
+!
+! Example on TPU files you might write:
+!
+!	input_file := GET_INFO (COMMAND_LINE, "file_name");
+!	main_buffer := CREATE_BUFFER ("main", input_file);
+!	position (beginning_of (main_buffer));
+!	! The following call substitutes "foo" to "bar", but only when
+!	! the line starts with a colon.
+!	TPU_substitute (LINE_BEGIN + ":" + unanchor + "", "foo", "", "bar");
+!	! The following call will remove any comma that follows a comma
+!	! and that is followed by a dot.
+!	TPU_delete (",",",",".");
+!	! This makes sure the result is written to file.
+!	write_file (main_buffer, get_info (command_line, "output_file"));
+!	quit;
+
+
+procedure removenullpaths(path_string)
+	local b,r,p,r0,s;
+	b := create_buffer("temp");
+	p := (LINE_BEGIN + ","@r0) | (","@r0 + LINE_END) |
+		(","@r0 + ",");
+	position (beginning_of (b));
+	copy_text(path_string);
+	position (beginning_of (b));
+	loop
+		r := search_quietly (p, FORWARD);
+		EXITIF r = 0;
+		erase (r0);
+		position (end_of (r));
+	endloop;
+	s := substr(b,1);
+	delete (b);
+	return s;
+endprocedure;
+procedure TPU_substitute(pre_pat,
+                         pat,
+                         post_pat,
+                         replacement)
+	local r,r0,re;
+	position (beginning_of (main_buffer));
+	loop
+		r := search_quietly (pre_pat + 
+                                ((pat+"")@r0) + 
+                                post_pat, 
+                                FORWARD);
+		EXITIF r = 0;
+		if beginning_of(r0) <> end_of(r0)
+		then
+			erase (r0);
+			position (r0);
+			copy_text (replacement);
+		endif;
+		position (end_of (r0));
+!		position (line_begin);
+!		move_vertical (1);
+	endloop;
+endprocedure;
+procedure TPU_delete(pre_pat,
+                         pat,
+                         post_pat)
+	local r,r0,re;
+	position (beginning_of (main_buffer));
+	loop
+		r := search_quietly (pre_pat + 
+                                ((pat+"")@r0) + 
+                                post_pat, 
+                                FORWARD);
+		EXITIF r = 0;
+		if beginning_of(r0) <> end_of(r0)
+		then
+			erase (r0);
+		endif;
+		position (r0);
+	endloop;
+endprocedure;
+save (get_info (command_line, "output_file"));
+quit;

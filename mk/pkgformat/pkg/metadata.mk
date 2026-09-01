@@ -359,13 +359,23 @@ ${_SIZE_PKG_FILE}: ${PLIST}
 _SIZE_ALL_FILE=		${PKG_DB_TMPDIR}/+SIZE_ALL
 _METADATA_TARGETS+=	${_SIZE_ALL_FILE}
 
+# The GNU xargs shipped with GNV runs its command once for empty input unless
+# -r is supplied.  A VMS package with no run-time dependencies therefore
+# would otherwise invoke pkg_info without a package name and fail metadata
+# generation.
+.if ${OPSYS} == "OpenVMS"
+_SIZE_ALL_XARGS_FLAGS=	-r -n 256
+.else
+_SIZE_ALL_XARGS_FLAGS=	-n 256
+.endif
+
 ${_SIZE_ALL_FILE}: ${_RDEPENDS_FILE} ${_SIZE_PKG_FILE}
 	${RUN}								\
 	${TEST} -d ${.TARGET:H} || ${MKDIR} ${.TARGET:H};		\
 	{								\
 		${CAT} ${_SIZE_PKG_FILE} &&				\
 		${_FULL_DEPENDS_CMD} | ${SORT} -u |			\
-		${XARGS} -n 256 ${PKG_INFO} -qs;			\
+		${XARGS} ${_SIZE_ALL_XARGS_FLAGS} ${PKG_INFO} -qs;		\
 	} |								\
 	${AWK} 'BEGIN { s = 0 } /^[0-9]+$$/ { s += $$1 } END { print s }' \
 		> ${.TARGET}

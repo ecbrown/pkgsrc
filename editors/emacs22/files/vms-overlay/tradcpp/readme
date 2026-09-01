@@ -1,0 +1,8 @@
+This directory contains source code for the GNU Project's C "traditional"
+preprocessor, hand-extracted from the GNU Compiler Collection (gcc-3.2.2)
+tarball.  Functionality has been reduced; see localshared.h for stub defs.
+
+If you do "make realclean" you will need yacc to do "make".
+Otherwise, only cc is required.
+
+Under VMS, try "mms" or "mms clean" or "mms zip".

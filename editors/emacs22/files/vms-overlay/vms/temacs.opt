@@ -1,0 +1,42 @@
+name="Emacs"
+identification="version 21.2"
+cluster=emacs,8192,,-
+dispnew.obj, frame.obj, scroll.obj, xdisp.obj, window.obj, 	cm.obj, term.obj , xterm.obj, xfns.obj, xfaces.obj, xmenu.obj, xselect.obj, xrdb.obj,-
+emacs.obj, keyboard.obj, macros.obj, keymap.obj, sysdep.obj, 	buffer.obj, filelock.obj, insdel.obj, marker.obj  , intervals.obj , textprop.obj,-
+minibuf.obj, fileio.obj, dired.obj, filemode.obj, 	cmds.obj, casetab.obj, casefiddle.obj, indent.obj, search.obj,-
+regex.obj, undo.obj, alloc.obj, data.obj, doc.obj, editfns.obj, 	callint.obj, eval.obj, floatfns.obj, fns.obj, print.obj, lread.obj,-
+abbrev.obj, syntax.obj  , vmsmap.obj , mocklisp.obj, bytecode.obj, 	process.obj, callproc.obj, doprnt.obj  , getloadavg.obj,-
+vmsfns.obj, vmsproc.obj, vmstime.obj,-
+charset.obj, coding.obj, fontset.obj, ccl.obj, category.obj, ecrt0.obj, mktime.obj, region-cache.obj, strftime.obj,-
+atimer.obj, composite.obj, md5.obj,-
+termcap.obj, tparam.obj, lastfile.obj ,vmsgmalloc.obj, vm-limit.obj  
+collect=saved_pure,EMACSPURE
+collect=saved_heap,HEAPBUFFER
+collect=non_saved_data,-
+stdin,-
+stdout,-
+stderr,-
+errno,-
+vaxc$errno,-
+sys_errlist,-
+sys_nerr,-
+environ,-
+emacs_widget_resources,emacsFrameClassRec,emacsFrameClass,-
+$char_string_constants
+[-.oldXMenu]libXMenu11.olb/lib
+
+
+
+
+
+
+sys$share:decw$xlibshr/share
+sys$share:ucx$ipc_shr/share
+
+
+
+
+
+
+
+SYS$DISK:[-.vms]vmslib.olb/lib

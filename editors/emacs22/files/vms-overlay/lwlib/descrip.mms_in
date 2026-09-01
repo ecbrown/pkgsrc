@@ -1,0 +1,107 @@
+# This was taken from the output of Imake
+# and set up to be configured by ../configure.
+# Some parts Copyright (c) 1992, 1993 Lucid, Inc.
+
+srcdir_dev=@srcdir_dev@
+srcdir_dir=@srcdir_dir@
+srcdir=@srcdir@
+VPATH=@srcdir@
+C_SWITCH_X_SITE=@C_SWITCH_X_SITE@
+C_SWITCH_X_MACHINE=@C_SWITCH_X_MACHINE@
+C_SWITCH_X_SYSTEM=@C_SWITCH_X_SYSTEM@
+C_SWITCH_SITE=@C_SWITCH_SITE@
+C_SWITCH_MACHINE=@C_SWITCH_MACHINE@
+C_SWITCH_SYSTEM=@C_SWITCH_SYSTEM@
+sys_includes=@sys_includes@
+x_includes=@x_includes@
+
+vmssrcdir=$(srcdir_dev)[$(srcdir_dir).-.vms]
+
+CC=@CC@
+CFLAGS=@CFLAGS@
+CPP=@CPP@
+LN_S=@LN_S@
+# See below--@X_TOOLKIT_TYPE@ is used below.
+USE_X_TOOLKIT=@X_TOOLKIT_TYPE@
+
+TOP_dev = sys$disk:
+TOP_dir =
+TOP = sys$disk:[]
+
+AR = library/create/replace/object
+
+LN = ln -s
+RANLIB = ranlib
+RM = @$(vmssrcdir)delete
+
+LUCID_OBJS = lwlib-Xlw.obj, xlwmenu.obj, lwlib-Xaw.obj
+MOTIF_OBJS = lwlib-Xm.obj
+OLIT_OBJS = lwlib-Xol.obj, lwlib-Xolmb.obj
+
+TOOLKIT_DEFINES = USE_$(USE_X_TOOLKIT)
+TOOLKIT_OBJS = $(@X_TOOLKIT_TYPE@_OBJS)
+
+OBJS = lwlib.obj, $(TOOLKIT_OBJS), lwlib-utils.obj
+
+ALL_CFLAGS= $(C_SWITCH_SITE) $(C_SWITCH_SYSTEM) $(C_SWITCH_X_SITE) \
+  $(C_SWITCH_X_SYSTEM) $(C_SWITCH_MACHINE) $(CPPFLAGS) $(CFLAGS) \
+  /define=(EMACS_BITMAP_FILES,"emacs" 'extra_defs')
+
+.FIRST :
+	if "$(sys_includes)" .nes. "" then -
+		define /nolog sys $(sys_includes),sys$disk:[]
+	if "$(sys_includes)" .eqs. "" then -
+		define /nolog sys sys$disk:[]
+	if "$(x_includes)" .nes. "" then -
+		define /nolog x11 $(x_includes)
+	define /nolog local_src $(srcdir)
+	extra_defs = ""
+
+.c.obj :
+	$(CC) $(ALL_CFLAGS) $<
+
+all : liblw.olb
+	@ !
+
+liblw.olb : $(OBJS)
+	$(RM) $@
+	$(AR) $@ $(OBJS)
+	! @echo Do not be alarmed if the following ranlib command
+	! @echo fails due to the absence of a ranlib program on your system.
+	! -$(RANLIB) $@ || true
+#If running ranlib fails, probably there is none.
+#That's ok.  So don't stop the build.
+
+lwlib.obj : $(srcdir)lwlib.c
+	extra_defs = ",$(TOOLKIT_DEFINES)"
+	$(CC) $(ALL_CFLAGS) $(srcdir)lwlib.c
+	extra_defs = ""
+
+xrdb-cpp.obj : $(srcdir)xrdb-cpp.c
+	extra_defs = ",CPP_PROGRAM=$(CPP)"
+	$(CC) $(ALL_CFLAGS) $(srcdir)xrdb-cpp.c
+	extra_defs = ""
+
+lwlib-utils.obj :	$(srcdir)lwlib-utils.c $(srcdir)lwlib-utils.h
+lwlib.obj :		$(srcdir)lwlib.c $(srcdir)lwlib.h $(srcdir)lwlib-int.h
+lwlib-Xlw.obj : 	$(srcdir)lwlib-Xlw.c $(srcdir)lwlib.h $(srcdir)lwlib-int.h
+lwlib-Xaw.obj : 	$(srcdir)lwlib-Xaw.c $(srcdir)lwlib.h $(srcdir)lwlib-int.h
+lwlib-Xm.obj : 		$(srcdir)lwlib-Xm.c $(srcdir)lwlib.h $(srcdir)lwlib-int.h $(srcdir)lwlib-utils.h
+lwlib-Xol.obj : 	$(srcdir)lwlib-Xol.c $(srcdir)lwlib.h $(srcdir)lwlib-int.h
+lwlib-Xolmb.obj : 	$(srcdir)lwlib-Xolmb.c $(srcdir)lwlib-Xolmb.h $(srcdir)lwlib-XolmbP.h
+xlwmenu.obj :	$(srcdir)xlwmenu.c
+
+mostlyclean :
+	- purge
+	@$(vmssrcdir)delete *.obj,errs.,*.olb,.emacs_*,make.log,MakeOut
+	@$(vmssrcdir)delete _$*.*$,_$*$.
+
+clean : mostlyclean
+	@ !
+distclean : clean
+	@ !
+realclean : distclean
+	@ !
+
+tags ::
+	$(TAGS) -t *.c *.h

@@ -1,0 +1,80 @@
+#define NOT_C_CODE
+#include <config.h>
+#include <makeconfig.h>
+#undef vms
+#undef VMS
+$ ! VMS command file to create or update the file `DOC.' which contains
+$ ! documentation strings for the functions and variables preloaded in Emacs.
+$ ! This command file should be run when you build Emacs for the first time and
+$ ! again if any documentation strings change in the source files listed here.
+$
+$ srcdir_dev := @srcdir_dev@
+$ srcdir_dir := @srcdir_dir@
+$ srcdir := @srcdir@
+$
+$ on error then goto done
+$ on severe_error then goto done
+$ on control_y then goto done
+$ on warning then continue
+$
+$! This is just to make absolutelly sure we don't get any local definition
+$! of __result
+$ __result = ""
+$ delete/symbol/local __result
+$! Let's shorten the paths as much as possible...
+$ @'srcdir'canonicaldir 'srcdir_dev'['srcdir_dir'.-.src] __result
+$ srcsrcdir = __result
+$ @'srcdir'canonicaldir 'srcdir_dev'['srcdir_dir'.-.lisp] __result
+$ lispdir = __result
+$
+$ etc := [-.etc]
+$
+$ old = f$environment("default")
+$ on error then goto done
+$ proc = f$environment("PROCEDURE")
+$ proc_dir = f$parse(proc,,,"NODE")+f$parse(proc,,,"DEVICE")+f$parse(proc,,,"DIRECTORY")
+$ set def 'proc_dir' ! Just to make sure we're in the right place!
+$ set def [-.src]
+$
+$ save_verif = f$verify(1)
+$ @'srcdir'canonicaldir 'srcdir_dev'['srcdir_dir'.-.lib-src] __result
+$
+$ libsrc := [-.lib-src]
+$ orig_doit := $sys$disk:'libsrc'make-docfile
+$
+$ orig_doit -o [-.etc]DOC -d 'srcsrcdir'
+$
+$ doit := 'orig_doit' -a [-.etc]DOC -d 'srcsrcdir'
+$ doit dispnew.obj scroll.obj xdisp.obj window.obj cm.obj term.obj
+$ doit XOBJ
+$ doit emacs.obj keyboard.obj macros.obj keymap.obj sysdep.obj buffer.obj
+$ doit filelock.obj insdel.obj marker.obj INTERVAL_OBJ minibuf.obj fileio.obj
+$ doit dired.obj filemode.obj cmds.obj casetab.obj casefiddle.obj indent.obj
+$ doit search.obj regex.obj undo.obj alloc.obj data.obj doc.obj editfns.obj
+$ doit callint.obj eval.obj floatfns.obj fns.obj print.obj lread.obj
+$ doit abbrev.obj syntax.obj UNEXEC mocklisp.obj bytecode.obj process.obj
+$ doit callproc.obj doprnt.obj GETLOADAVG_OBJ vmsfns.obj vmsproc.obj
+$ doit vmstime.obj termcapobj lastfile.obj mallocobj allocaobj widgetobj
+$
+$ doit := 'orig_doit' -a [-.etc]DOC -d 'lispdir'
+$ doit abbrev.elc buff-menu.elc byte-run.elc c-mode.elc
+$ doit files.elc fill.elc
+$ doit FLOAT_SUPPORT
+$ doit FRAME_SUPPORT
+$ doit X_WINDOWS_SUPPORT
+$ doit help.elc indent.elc isearch.elc lisp-mode.elc
+$ doit lisp.elc loaddefs.el map-ynp.elc page.elc
+$ doit paragraphs.elc paths.el register.elc replace.elc
+$ doit simple.elc startup.elc subr.elc
+$ doit test-mode.elc vc-hooks.elc
+$ doit VMS_SUPPORT
+$ doit MSDOS_SUPPORT
+$ doit window.elc version.el
+$ doit tool-bar.elc image.elc tooltip.elc 
+$ doit font-lock.elc regexp-opt.elc
+$ doit view.elc
+$!
+$done:
+$ set default 'old'
+$! 'f$verify(save_verif)
+

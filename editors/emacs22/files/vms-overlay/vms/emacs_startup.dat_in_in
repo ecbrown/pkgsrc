@@ -1,0 +1,10 @@
+EMACS-@version@ Emacs version @version@
+@all_logicals@
+ D\eshell\\"*dcl*"
+ SL\bindir\@bindir@
+ SL\vmslibdir\@vmslibdir@
+ SL\mandir\@mandir@
+ SG\runemacs\$'bindir'emacs -map 'bindir'emacs.dump
+ SG\emacs\@'vmslibdir'kepteditor emacs
+ H\'mandir'gnu
+ I\'bindir'emacs.exe\/open/share/header/priv=sysgbl

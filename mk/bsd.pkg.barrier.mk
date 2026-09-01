@@ -70,17 +70,32 @@ barrier: ${_BARRIER_PRE_TARGETS} ${_COOKIE.barrier}
 	   ${PKG_INFO} -qe ${PKGNAME}; then \
 		${PHASE_MSG} "Skipping installation of already handled package"; \
 	else \
-	cd ${.CURDIR}							\
-	&& ${RECURSIVE_MAKE} ${MAKEFLAGS} _PKGSRC_BARRIER=yes ${_BARRIER_CMDLINE_TARGETS} \
+	cd ${_BARRIER_CMD_CWD}						\
+	&& ${RECURSIVE_MAKE} ${_BARRIER_MAKEFLAGS} _PKGSRC_BARRIER=yes ${_BARRIER_CMDLINE_TARGETS} \
 	|| {								\
 		exitcode="$$?";						\
-		${RECURSIVE_MAKE} ${MAKEFLAGS} _PKGSRC_BARRIER=yes barrier-error-check; \
+		${RECURSIVE_MAKE} ${_BARRIER_MAKEFLAGS} _PKGSRC_BARRIER=yes barrier-error-check; \
 		exit "$$exitcode";					\
 	}; \
 	fi
 .  if defined(PKG_VERBOSE)
 	@${PHASE_MSG} "Leaving \`\`"${_BARRIER_CMDLINE_TARGETS:Q}"'' after barrier for ${PKGNAME}"
 .  endif
+.endif
+
+.if ${OPSYS} == "OpenVMS"
+# GNV reports .CURDIR with a physical device such as /DISK$PKGSRC.  The '$'
+# is consumed as a make variable when the barrier shell command is expanded,
+# yielding the unusable /DISKKGSRC spelling.  BUILD_DIR retains the logical
+# POSIX path propagated by bsd.prefs.mk.
+_BARRIER_CMD_CWD=	${BUILD_DIR}
+# DESTDIR is a command-line override in staged VMS builds.  bmake does not
+# include command-line overrides in MAKEFLAGS on this platform, so carry it
+# explicitly through the recursive barrier invocation.
+_BARRIER_MAKEFLAGS=	${MAKEFLAGS} DESTDIR=${DESTDIR:Q}
+.else
+_BARRIER_CMD_CWD=	${.CURDIR}
+_BARRIER_MAKEFLAGS=	${MAKEFLAGS}
 .endif
 
 ######################################################################

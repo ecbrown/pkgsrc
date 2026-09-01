@@ -1,0 +1,171 @@
+# $NetBSD: Makefile.common,v 1.7 2016/12/30 22:25:46 wiz Exp $
+#
+# used by editors/emacs22/Makefile
+# used by editors/emacs22-nox11/Makefile
+
+COMMENT?=	GNU editing macros (editor)
+
+DISTNAME=	emacs-22.3
+PKGNAME?=	${DISTNAME:S/emacs/emacs22/}
+CATEGORIES=	editors
+MASTER_SITES=	${MASTER_SITE_GNU:=emacs/}
+
+MAINTAINER=	pkgsrc-users@NetBSD.org
+HOMEPAGE=	http://www.gnu.org/software/emacs/emacs.html
+LICENSE=	gnu-gpl-v3
+
+CONFLICTS+=	elisp-manual-[0-9]*
+CONFLICTS+=	mule-[0-9]*
+
+.include "../../mk/bsd.prefs.mk"
+
+.if ${OPSYS} == "OpenVMS"
+# The VMS source tree has its own DCL configure script and MMS description.
+# Keep the native DECwindows build self-contained: DECW$ headers and the
+# shareable X library are supplied by the operating system, rather than by
+# pkgsrc's Unix X11 buildlink files.
+HAS_CONFIGURE=		yes
+CONFIGURE_SCRIPT=	./configure.com
+MAKE_FILE=		Descrip.MMS
+PATCHDIR=
+# The VMS file-spec parser treats a dot in a directory component specially
+# (the extracted emacs-22.3 directory becomes emacs-22^.3).  Use a dot-free
+# work directory like the existing native EMACS223 build.
+WRKSRC=		${WRKDIR}/emacs223
+# GNV cannot reopen the device-qualified .CURDIR spelling emitted by bmake;
+# use the logical pkgsrc root for files consumed by the framework.
+FILESDIR=		${PKGSRCDIR}/editors/emacs22/files
+DISTINFO_FILE=		${PKGSRCDIR}/editors/emacs22/files/distinfo-vms
+
+# bmake's physical .CURDIR spelling contains a dollar sign when the tree is
+# on a VMS logical device.  Keep package metadata rooted at the logical
+# pkgsrc path so DESCR/PLIST lookups survive recursive phase barriers.
+PKGDIR=		${PKGSRCDIR}/editors/emacs22
+DESCR_SRC=		${PKGDIR}/DESCR
+
+# The VMS port uses system Perl only to translate pkgsrc's POSIX staging path
+# into an OpenVMS directory specification.  VSI VMS kits ship this module in
+# the native Perl installation.
+EMACS22_VMS_NATIVE_PERL?=	/PERL_ROOT/000000/PERL.EXE
+EMACS22_VMS_PREFIX_CMD=	${EMACS22_VMS_NATIVE_PERL:Q} -MVMS::Filespec -e \
+		'print VMS::Filespec::vmspath("${DESTDIR}${PREFIX}")'
+EMACS22_VMS_PREFIX=	${EMACS22_VMS_PREFIX_CMD:sh}
+EMACS22_VMS_STARTUP_CMD=	${EMACS22_VMS_NATIVE_PERL:Q} -MVMS::Filespec -e \
+		'print VMS::Filespec::vmspath("${DESTDIR}${PREFIX}/startup")'
+EMACS22_VMS_STARTUP=	${EMACS22_VMS_STARTUP_CMD:sh}
+EMACS22_VMS_VUE_CMD=	${EMACS22_VMS_NATIVE_PERL:Q} -MVMS::Filespec -e \
+		'print VMS::Filespec::vmspath("${DESTDIR}${PREFIX}/vue")'
+EMACS22_VMS_VUE=	${EMACS22_VMS_VUE_CMD:sh}
+
+EMACS22_WITH_X?=	YES
+.if ${EMACS22_WITH_X} == "YES"
+EMACS22_VMS_X_ARGS=	--WITH-X=YES --WITH-X-TOOLKIT=NO
+.else
+EMACS22_VMS_X_ARGS=	--WITH-X=NO --WITH-X-TOOLKIT=NO
+.endif
+
+# The VMS install target enumerates the architecture-independent lisp and
+# documentation files itself.  Generate the final list from the staged tree.
+PLIST_TYPE=		dynamic
+# The VMS pkg_install bootstrap does not ship a vulnerability database.  Keep
+# this package's recursive phase barriers from treating that optional database
+# as a hard failure; checksums remain enabled below.
+NO_PKGTOOLS_REQD_CHECK=	yes
+
+post-extract:
+	${MKDIR} ${WRKSRC}
+	${CP} -R ${WRKDIR}/${DISTNAME}/. ${WRKSRC}
+	${RM} -rf ${WRKDIR}/${DISTNAME}
+	${CP} -R ${FILESDIR}/vms-overlay/. ${WRKSRC}
+	${CP} ${FILESDIR}/site-init.el ${WRKSRC}/lisp/site-init.el
+	${CHMOD} -R go-w ${WRKSRC}
+
+do-configure:
+	${RUN} cd ${WRKSRC} && { configure_status=0; \
+	/bin/dcl '@[.VMS]pkgsrc-configure.com ${EMACS22_VMS_PREFIX} \
+		${EMACS22_WITH_X}' || configure_status=$$?; \
+	test $$configure_status -eq 0 || test $$configure_status -eq 1; }
+
+do-build:
+	${RUN} cd ${WRKSRC} && /bin/dcl '@[.VMS]pkgsrc-mms.com all ${EMACS22_VMS_STARTUP} ${EMACS22_VMS_VUE}'
+
+do-install:
+	${RUN} cd ${WRKSRC} && /bin/dcl '@[.VMS]pkgsrc-mms.com install ${EMACS22_VMS_STARTUP} ${EMACS22_VMS_VUE}'
+.else
+USE_TOOLS+=		gmake gzip mktemp:run perl:run pkg-config
+GNU_CONFIGURE=		yes
+INFO_FILES=		yes
+
+SETGIDGAME=		yes
+
+MAKEFLAGS+=		EMACSLOADPATH=${WRKSRC}/lisp
+
+CONFIGURE_ARGS+=	--localstatedir=${VARBASE:Q}
+CONFIGURE_ENV+=		GAMEOWN=${GAMEOWN:Q}
+
+BUILD_DEFS+=		VARBASE
+BUILD_DEFS+=		GAMEDATAMODE
+
+# build PATH in the dumped emacs is not a problem
+CHECK_WRKREF_SKIP+=	bin/emacs
+CHECK_WRKREF_SKIP+=	bin/emacs-[0-9]*
+
+REPLACE_PERL=		lib-src/grep-changelog
+
+SUBST_CLASSES+=		test_equal
+SUBST_STAGE.test_equal=	pre-configure
+SUBST_MESSAGE.test_equal=	Fixing bashisms in test(1) usage.
+SUBST_FILES.test_equal=	mac/make-package
+SUBST_SED.test_equal=	-e 's/ == / = /g'
+
+MAKE_DIRS_PERMS+=	${VARBASE}/games/emacs \
+			${GAMES_USER} ${GAMES_GROUP} ${GAMEDIRMODE:Q}
+CONF_FILES_PERMS+=	/dev/null ${VARBASE}/games/emacs/snake-scores \
+			${GAMES_USER} ${GAMES_GROUP} ${GAMEDATAMODE:Q}
+CONF_FILES_PERMS+=	/dev/null ${VARBASE}/games/emacs/tetris-scores \
+			${GAMES_USER} ${GAMES_GROUP} ${GAMEDATAMODE:Q}
+SPECIAL_PERMS+=		libexec/emacs/${PKGVERSION_NOREV}/${MACHINE_GNU_PLATFORM}/update-game-score ${SETGID_GAMES_PERMS}
+.endif
+
+.if (${OPSYS} == "DragonFly") && exists(/usr/lib/crtn.o)
+CPPFLAGS+=		-DDFLY_CRT_USRLIB
+.endif
+
+.include "../../mk/compiler.mk"
+
+# "emacs" uses the C pre-processor to generate makefiles. The C pre-processor
+# of newer GCC version is designed to break this by purpose. We work around
+# that using the traditional mode to generate makefiles.
+.if ${OPSYS} != "OpenVMS" && !empty(CC_VERSION:Mgcc-[4-9].*)
+CPP+=			-P
+CONFIGURE_ENV+=		CPP=${CPP:Q}
+.endif
+
+.if (${OPSYS} == "NetBSD") && \
+    !exists(/usr/lib/libgcc_s.so) && !exists(/usr/lib/libgcc.a)
+# NetBSD with native Clang doesn't provide libgcc, everything is in libc.
+pre-configure: fake-libgcc
+
+LDFLAGS+=		-L${PREFIX}/lib
+fake-libgcc:
+	${AR} q ${BUILDLINK_DIR}/lib/libgcc.a
+.endif
+
+.if ${OPSYS} != "OpenVMS"
+post-extract:
+	cp ${FILESDIR}/site-init.el ${WRKSRC}/lisp
+	cp ${FILESDIR}/dragonfly.h ${WRKSRC}/src/s
+	${CHMOD} -R go-w ${WRKSRC}
+
+# These dirs are installed by tar-copy and can sometimes come out mode
+# 754, which if PKG_DEVELOPER is set causes the build to fail.
+post-install:
+.for file in leim leim/ja-dic leim/quail
+	${CHMOD} 755 ${DESTDIR}${PREFIX}/share/emacs/${PKGVERSION_NOREV}/${file}
+.endfor
+.endif
+
+.if ${OPSYS} != "OpenVMS"
+.include "../../mk/oss.buildlink3.mk"
+.include "../../mk/termcap.buildlink3.mk"
+.endif

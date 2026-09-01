@@ -877,8 +877,11 @@ _PKGSRCDIR=		${_PKGSRC_TOPDIR}
 .  else
 _PKGSRCDIR!=		cd ${_PKGSRC_TOPDIR} && ${PWD_CMD}
 .  endif
-MAKEFLAGS+=		_PKGSRCDIR=${_PKGSRCDIR:Q}
 .endif
+# Recursive phase barriers must retain the pkgsrc root spelling.  On VMS this
+# must be the logical POSIX path: GNV's pwd otherwise turns it into
+# /DISKKGSRC when '$' in the physical device name is parsed by bmake.
+MAKEFLAGS+=		_PKGSRCDIR=${_PKGSRCDIR:Q}
 PKGSRCDIR=		${_PKGSRCDIR}
 
 .if ${TOOLS_USE_CROSS_COMPILE:tl} == "yes"

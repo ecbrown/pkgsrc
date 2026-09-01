@@ -1,0 +1,156 @@
+!# Uncomment following line if linking temacs complains about missing insque.
+srcdir_dev=@srcdir_dev@
+srcdir_dir=@srcdir_dir@
+srcdir=@srcdir@
+VPATH=@srcdir@
+# Where to find some usefull VMS scripts
+vmssrcdir=$(srcdir_dev)[$(srcdir_dir).-.vms]
+
+C_SWITCH_X_SITE=@C_SWITCH_X_SITE@
+C_SWITCH_X_MACHINE=@C_SWITCH_X_MACHINE@
+C_SWITCH_X_SYSTEM=@C_SWITCH_X_SYSTEM@
+C_SWITCH_SITE=@C_SWITCH_SITE@
+C_SWITCH_MACHINE=@C_SWITCH_MACHINE@
+C_SWITCH_SYSTEM=@C_SWITCH_SYSTEM@
+
+x_includes=@x_includes@
+sys_includes=@sys_includes@
+
+EXTRA=insque.obj
+CC=@CC@
+CFLAGS=@CFLAGS@
+CPP=@CPP@
+LN_S=@LN_S@
+AS = as
+LD = link
+TAGS = mcr [-.lib-src]etags
+RM = @$(vmssrcdir)delete
+MV = rename
+AR = library/insert
+@SET_MAKE@
+STD_DEFINES =
+CDEBUGFLAGS = /debug/noopt
+
+OBJS =  Activate.obj, -
+	AddPane.obj, -
+	AddSel.obj, -
+	ChgPane.obj, -
+	ChgSel.obj, -
+	Create.obj, -
+	DelPane.obj, -
+	DelSel.obj, -
+	Destroy.obj, -
+	Error.obj, -
+	EvHand.obj, -
+	FindPane.obj, -
+	FindSel.obj, -
+	InsPane.obj, -
+	InsSel.obj, -
+	Internal.obj, -
+	Locate.obj, -
+	Post.obj, -
+	Recomp.obj, -
+	SetAEQ.obj, -
+	SetFrz.obj, -
+	SetPane.obj, -
+	SetSel.obj, -
+        XDelAssoc.obj, XLookAssoc.obj, XCrAssoc.obj, XDestAssoc.obj, -
+        XMakeAssoc.obj
+
+ALL_CFLAGS=$(C_SWITCH_SITE) $(C_SWITCH_SYSTEM) $(C_SWITCH_X_SITE) \
+  $(C_SWITCH_X_SYSTEM) $(C_SWITCH_MACHINE) $(CPPFLAGS) $(CFLAGS) \
+  /define=("EMACS_BITMAP_FILES") /include=(local_includes)
+
+.FIRST :
+	if "$(sys_includes)" .nes. "" then -
+		define /nolog sys $(sys_includes),sys$disk:[-.src],sys$disk:[]
+	if "$(sys_includes)" .eqs. "" then -
+		define /nolog sys sys$disk:[-.src],sys$disk:[]
+	if "$(x_includes)" .nes. "" then -
+		define /nolog x11 $(x_includes)
+	define /nolog local_includes -
+		sys$disk:[-.src],-
+		sys$disk:[],-
+		$(srcdir),-
+		$(srcdir_dev)[$(srcdir_dir).-.src],-
+		$(srcdir_dev)[$(srcdir_dir).-.src.bitmaps]
+	define /nolog bitmaps $(srcdir_dev)[$(srcdir_dir).-.src.bitmaps]
+
+.c.obj :
+	$(CC) $(ALL_CFLAGS)/obj=$@ $<
+
+all :: libXMenu11.olb
+	@ !
+
+libXMenu11.olb : $(OBJS) $(EXTRA)
+	if f$search("$@") then $(RM) $@.*
+	$(AR)/create $@ $(OBJS)
+	if ("$(EXTRA)" .nes. "") then $(AR) $@ $(EXTRA)
+#If running ranlib fails, probably there is none.
+#That's ok.  So don't stop the build.
+
+Activate.obj : $(srcdir)Activate.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+AddPane.obj : $(srcdir)AddPane.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+AddSel.obj : $(srcdir)AddSel.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+ChgPane.obj : $(srcdir)ChgPane.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+ChgSel.obj : $(srcdir)ChgSel.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+Create.obj : $(srcdir)Create.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+DelPane.obj : $(srcdir)DelPane.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+DelSel.obj : $(srcdir)DelSel.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+Destroy.obj : $(srcdir)Destroy.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+Error.obj : $(srcdir)Error.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+EvHand.obj : $(srcdir)EvHand.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+FindPane.obj : $(srcdir)FindPane.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+FindSel.obj : $(srcdir)FindSel.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+InsPane.obj : $(srcdir)InsPane.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+InsSel.obj : $(srcdir)InsSel.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+Internal.obj : $(srcdir)Internal.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+Locate.obj : $(srcdir)Locate.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+Post.obj : $(srcdir)Post.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h $(srcdir)X10.h
+Recomp.obj : $(srcdir)Recomp.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+SetAEQ.obj : $(srcdir)SetAEQ.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+SetFrz.obj : $(srcdir)SetFrz.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+SetPane.obj : $(srcdir)SetPane.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+SetSel.obj : $(srcdir)SetSel.c $(srcdir)XMenuInt.h $(srcdir)XMenu.h -
+   $(srcdir)X10.h
+XDelAssoc.obj : $(srcdir)XDelAssoc.c $(srcdir)X10.h
+XLookAssoc.obj : $(srcdir)XLookAssoc.c $(srcdir)X10.h
+XCrAssoc.obj : $(srcdir)XCrAssoc.c $(srcdir)X10.h
+XDestAssoc.obj : $(srcdir)XDestAssoc.c $(srcdir)X10.h
+XMakeAssoc.obj : $(srcdir)XMakeAssoc.c $(srcdir)X10.h
+insque.obj : $(srcdir)insque.c
+
+FRC.mostlyclean :
+	@ !
+mostlyclean : FRC.mostlyclean
+	- $(RM) *.BAK,*.obj,*.olb,tags.,make.log
+clean : mostlyclean
+	@ !
+distclean : clean
+	@ !
+realclean : distclean
+	@ !
+
+tags ::
+	$(TAGS) -t *.c *.h

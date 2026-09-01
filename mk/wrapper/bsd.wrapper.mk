@@ -692,6 +692,13 @@ _UNWRAP_PATTERNS_FIND_cmd=	\
 UNWRAP_FILES?=		# empty
 _UNWRAP_FILES=		${UNWRAP_FILES}					\
 			${_UNWRAP_PATTERNS_FIND_cmd:sh:N__dummy-entry__}
+.if ${OPSYS} == "OpenVMS"
+# GNV's find cannot reliably walk a VMS source tree containing versioned
+# directory files.  Native VMS build descriptions do not use the Unix
+# *-config/Conf.sh/pkg-config unwrapping pass, so retain only explicitly
+# requested files on this platform.
+_UNWRAP_FILES=		${UNWRAP_FILES}
+.endif
 _UNWRAP_SED?=		# empty
 
 SUBST_CLASSES+=		unwrap

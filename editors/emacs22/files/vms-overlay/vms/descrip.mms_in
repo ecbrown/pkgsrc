@@ -1,0 +1,190 @@
+# DIST: This is the distribution Makefile for VMSLIB.  configure can
+# DIST: make most of the changes to this file you might want, so try
+# DIST: that first.
+
+# ==================== Things `configure' will edit ====================
+
+CC=@CC@
+CFLAGS=@CFLAGS@
+C_SWITCH_SYSTEM=@C_SWITCH_SYSTEM@
+LD = link
+LDFLAGS=
+version=@version@
+version_us=@version_us@
+configname=@configuration@
+sys_includes=@sys_includes@
+
+# ==================== Where To Install Things ====================
+
+# Where to find the source code.  This is set by the configure
+# script's `--srcdir' option.  However, the value of ${srcdir} in
+# this makefile is not identical to what was specified with --srcdir,
+# since the variable here has `/lib-src' added at the end.
+srcdir_dev=@srcdir_dev@
+srcdir_dir=@srcdir_dir@
+srcdir=@srcdir@
+VPATH=@srcdir@
+
+# Where to find some usefull VMS scripts.  In this case, it is the same
+# as the souce directory.
+vmssrcdir=$(srcdir_dev)[$(srcdir_dir)]
+
+# ============================= Targets ==============================
+UTILITIES = hackdebug.exe,check_verb.exe
+
+SCRIPTS= 
+
+LIBRARIES = VMSLIB.OLB
+
+HACKARGV_MODULES = VMSLIB(esctrans) VMSLIB(glob) VMSLIB(hackargv) \
+	VMSLIB(misc)
+PIPE_MODULES = VMSLIB(pipe)
+UTIME_MODULES = VMSLIB(utime)
+
+MODULES = $(HACKARGV_MODULES) $(PIPE_MODULES) $(UTIME_MODULES)
+
+HACKARGV_SOURCE = esctrans.c glob.c hackargv.c misc.c misc.h
+PIPE_SOURCE = pipe.c pipe.h vms-types.h
+UTIME_SOURCE = utime.c utime.h
+
+SOURCE = $(HACKARGV_SOURCE) $(PIPE_SOURCE) $(UTIME_SOURCE)
+
+### We need to #define emacs to get the right versions of some files.
+### Some other files - those shared with other GNU utilities - need
+### HAVE_CONFIG_H #defined before they know they can take advantage of
+### the information in [-.src]config.h.
+ALL_CFLAGS = /define=("__foo__" 'extra_defs') \
+/include=(sys$disk:[]'extra_incl') $(CFLAGS) \
+'extra_cflags'
+
+CPP_CFLAGS = /define=("__foo__" 'extra_defs') \
+/include=(sys$disk:[],$(srcdir)'extra_incl') $(CPPFLAGS) $(CFLAGS) \
+'extra_cflags'
+
+.FIRST :
+	if "$(sys_includes)" .nes. "" then -
+		define /nolog sys $(sys_includes),sys$disk:[]
+	if "$(sys_includes)" .eqs. "" then -
+		define /nolog sys sys$disk:[]
+	@ extra_defs = ""
+	@ extra_incl = ""
+	@ ! Special for Emacs
+	@ extra_cflags = "$(C_SWITCH_SYSTEM)"
+	@ if extra_cflags .eqs. "@C_SWITCH_SYSTEM@" then extra_cflags = ""
+	@ if "$(CFLAGS)" - "/NESTED=INCLUDE" .nes. "$(CFLAGS)" then -
+		extra_cflags = extra_cflags + "/PREFIX=ALL"
+
+# This is the default compilation command.
+# But we should never rely on it, because some make version
+# failed to find it for getopt.o.  Using an explicit command made it work.
+.obj.exe :
+	$(LD) $(LDFLAGS) $*.OBJ,[-.vms]vmslink.opt/opt
+
+#.c.exe :
+#	$(CC) $(CPP_CFLAGS) $< /obj = $*.obj
+#	$(LD) $(LDFLAGS) /exec=$*.exe $*.OBJ,[-.vms]vmslink.opt/opt
+
+# This is a copy of the default MMS built-in rule, if someone made
+# the mistake of removing it (by making the logical MMS$RULES point
+# at a file without this rule)
+.c.obj :
+	$(CC) $(CPP_CFLAGS) $< /obj = sys$disk:[]$*.obj -
+		!/list=sys$disk:[]$*.lis/show=all
+
+# There are several entry points, depending on what you want to compile.
+# all_hackargv all_utime hackdebug.exe check_verb.exe
+all : all_vmslib
+	@ !
+
+all_vmslib : vmslib.olb $(MODULES) 
+	@ !
+
+all_pipe : vmslib.olb $(PIPE_MODULES)
+	@ !
+
+all_hackargv : vmslib.olb $(PIPE_MODULES) $(HACKARGV_MODULES)
+	@ !
+
+all_utime : vmslib.olb $(UTIME_MODULES)
+	@ !
+
+all_tpu_routines : routines.tpu$section
+	@ !
+
+# ---------------------------------------------
+
+mostlyclean :
+	- @$(vmssrcdir)delete *.obj
+
+clean : mostlyclean
+	- @$(vmssrcdir)delete $(INSTALLABLES),$(UTILITIES),$(LIBRARIES)
+	- @$(vmssrcdir)delete routines.tpu$section
+
+distclean : clean
+	- @$(vmssrcdir)delete *_tab.c,*_tab.h,TAGS.*
+
+realclean : distclean
+	@ !
+
+extraclean : realclean
+	- @$(vmssrcdir)delete _$$*.*$$
+	- purge
+
+unlock :
+	set file/prot=(o:rwd) $(SOURCES)
+
+relock :
+	set file/prot=(o:r) $(SOURCES)
+
+# Test the contents of the directory.
+check :
+	@ write sys$output "We don't have any tests for GNU VMSLIB yet."
+
+TAGS :
+	etags *.c *.h
+
+# ----------------- #
+
+hackdebug.exe : hackdebug.obj
+hackdebug.obj : $(srcdir)hackdebug.c
+
+check_verb.exe : check_verb.obj
+	__extra_link := ,sys$system:sys.stb/select
+	if f$getsyi("CPU") .ge. 128 then __extra_link := /sysexe=select
+	$(LD) $(LDFLAGS) $*.OBJ,[-.vms]vmslink.opt/opt '__extra_link' /notrace
+check_verb.obj : $(srcdir)check_verb.c
+
+vmslib.olb :
+	library/create/object vmslib.olb
+
+routines.tpu$section : $(srcdir)routines.tpu
+	@ save_mesg = f$environment("MESSAGE")
+	@ set message/nofacility/noidentification/noseverity/notext
+	@ edit/tpu/nosect/nodisp -
+		/command=$(srcdir)routines.tpu -
+		/out=sys$disk:[]routines.tpu$section
+	@ set message'save_mesg'
+
+esctrans.obj : $(srcdir)esctrans.c
+VMSLIB(esctrans) : esctrans.obj
+	library/replace/object $(MMS$TARGET) $(MMS$SOURCE)
+glob.obj : $(srcdir)glob.c
+VMSLIB(glob) : glob.obj
+	library/replace/object $(MMS$TARGET) $(MMS$SOURCE)
+
+# Looks like hackargv needs to be compiled non-optimized
+hackargv.obj : $(srcdir)hackargv.c
+	$(CC) $(CPP_CFLAGS) /NOOPT $< /obj = sys$disk:[]$*.obj -
+		!/list=sys$disk:[]$*.lis/show=all
+VMSLIB(hackargv) : hackargv.obj
+	library/replace/object $(MMS$TARGET) $(MMS$SOURCE)
+
+misc.obj : $(srcdir)misc.c
+VMSLIB(misc) : misc.obj
+	library/replace/object $(MMS$TARGET) $(MMS$SOURCE)
+pipe.obj : $(srcdir)pipe.c $(srcdir)vms-types.h
+VMSLIB(pipe) : pipe.obj
+	library/replace/object $(MMS$TARGET) $(MMS$SOURCE)
+utime.obj : $(srcdir)utime.c
+VMSLIB(utime) : utime.obj
+	library/replace/object $(MMS$TARGET) $(MMS$SOURCE)

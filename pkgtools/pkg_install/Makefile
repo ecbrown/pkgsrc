@@ -54,6 +54,13 @@ USE_NATIVE_GCC=		yes
 
 .include "../../mk/bsd.prefs.mk"
 
+.if ${OPSYS} == "OpenVMS"
+# GNV's GCC does not predefine the native C RTL marker used by pkg_install's
+# OpenVMS portability code.  Keep the VMS path and file-version handling
+# enabled when building the tools on VSI OpenVMS.
+CPPFLAGS+=	-D__VMS
+.endif
+
 .if ${OS_VARIANT} == "SCOOSR5"
 # SCO OpenServer 5.0.7/3.2's strings.h defines strcasecmp with
 # "unsigned size_t". We cannot use -Werror for net/libfetch.

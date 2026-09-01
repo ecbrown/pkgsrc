@@ -1,0 +1,53 @@
+!# Generated from AXPA:[TTN.EMACS.EMACS212_3.VMS]EMACS_STARTUP.DAT_IN and [.VMS]CONFIG.DAT
+EMACS-21.2 Emacs version 21.2
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\AXPA\\ -
+    ADAM$DKA0:/TRANS=(CONCEAL,-
+    TERMINAL)
+ D\eshell\\"*dcl*"
+ SL\bindir\AXPA:[TTN.LOCAL.BIN]
+ SL\vmslibdir\AXPA:[TTN.LOCAL.LIB.EMACS.VMS]
+ SL\mandir\AXPA:[TTN.LOCAL.HELP]
+ SG\runemacs\$'bindir'emacs-21_2 -map 'bindir'emacs-21_2.dump
+ SG\emacs\@'vmslibdir'kepteditor emacs
+ SG\etags\$'bindir'etags
+ SG\b2m\$'bindir'b2m
+ SG\emacsclient\@'bindir'emacsclient
+ H\'mandir'gnu
+ I\'bindir'emacs-21_2.exe\/open/share/header
+ I\'bindir'emacs-21_2.exe\/open/share/header/priv=sysgbl

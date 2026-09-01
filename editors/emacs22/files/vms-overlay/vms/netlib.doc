@@ -1,0 +1,14 @@
+NETLIB is a freely available package that provides *one* interface to
+most of the TCP/IP kits commonly running on OpenVMS.
+
+SOCKETSHR is a freely available package that provides BSD socket routines
+on top of NETLIB (and currently, also UCX).  It needs NETLIB 1.7 to run.
+
+Both NETLIB and SOCKETSHR are available by anonymous FTP from:
+
+	ftp.wku.edu:[.VMS.FILESERV]
+	ftp.vms.stacken.kth.se:[.WKU.VMS.FILESERV]
+	ftp.spc.edu:[.MACRO32] (I think)
+
+/Richard Levitte, levitte@e.kth.se
+Friday November 25, 1994

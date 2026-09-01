@@ -1,0 +1,1140 @@
+;;; Makefile.in-2mms --- edits to create a VMS-style makefile
+
+;;; Copyright (C) 2004 Free Software Foundation, Inc.
+
+;; Author: Thien-Thi Nguyen <ttn@gnu.org>
+;; Keywords: maint
+
+;; This file is part of GNU Emacs.
+
+;; GNU Emacs is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 2, or (at your option)
+;; any later version.
+
+;; GNU Emacs is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU Emacs; see the file COPYING.  If not, write to the
+;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+;; Boston, MA 02111-1307, USA.
+
+;;; Commentary:
+
+;; The second one.  Not installed.
+;;
+;; This is extremely lame at the moment.
+
+;;; Code:
+
+(erase-buffer)
+(make-mms-derivative-insert-raw-data 0)
+(insert "\n")
+(make-mms-derivative-insert-raw-data 1)
+(make-mms-derivative-data 'write-under-root "descrip.mms_in")
+
+;;;---------------------------------------------------------------------------
+;;; data
+
+;;;0;;# DIST: This is the distribution Makefile for Emacs.  configure can
+;;;0;;# DIST: make most of the changes to this file you might want, so try
+;;;0;;# DIST: that first.
+;;;0;;
+;;;0;;# mms all	to compile and build Emacs.
+;;;0;;# mms install	to install it.
+;;;0;;# mms TAGS	to update tags tables.
+;;;0;;#
+;;;0;;# mms clean  or  mms mostlyclean
+;;;0;;#      Delete all files from the current directory that are normally
+;;;0;;#      created by building the program.	 Don't delete the files that
+;;;0;;#      record the configuration.  Also preserve files that could be made
+;;;0;;#      by building, but normally aren't because the distribution comes
+;;;0;;#      with them.
+;;;0;;#
+;;;0;;#      Delete `.dvi' files here if they are not part of the distribution.
+;;;0;;#
+;;;0;;# mms distclean
+;;;0;;#      Delete all files from the current directory that are created by
+;;;0;;#      configuring or building the program.  If you have unpacked the
+;;;0;;#      source and built the program without creating any other files,
+;;;0;;#      `mms distclean' should leave only the files that were in the
+;;;0;;#      distribution.
+;;;0;;#
+;;;0;;# mms realclean
+;;;0;;#      Delete everything from the current directory that can be
+;;;0;;#      reconstructed with this Makefile.  This typically includes
+;;;0;;#      everything deleted by distclean, plus more: C source files
+;;;0;;#      produced by Bison, tags tables, info files, and so on.
+;;;0;;#
+;;;0;;# mms extraclean
+;;;0;;#      Still more severe - delete backup and autosave files, too.
+;;;0;;
+;;;0;;SHELL = /bin/sh
+;;;0;;
+;;;0;;# If Make doesn't predefine MAKE, set it here.
+;;;0;;@SET_MAKE@
+;;;0;;
+;;;0;;# ==================== Things `configure' Might Edit ====================
+;;;0;;
+;;;0;;CC=@CC@
+;;;0;;CPP=@CPP@
+;;;0;;C_SWITCH_SYSTEM=@c_switch_system@
+;;;0;;ALLOCA=@ALLOCA@
+;;;0;;LN_S=@LN_S@
+;;;0;;CFLAGS=@CFLAGS@
+;;;0;;C_SWITCH_X_SITE=@C_SWITCH_X_SITE@
+;;;0;;LD_SWITCH_X_SITE=@LD_SWITCH_X_SITE@
+;;;0;;LOADLIBES=@libsrc_libs@
+;;;0;;YACC=@YACC@
+;;;0;;
+;;;0;;### These help us choose version- and architecture-specific directories
+;;;0;;### to install files in.
+;;;0;;
+;;;0;;### This should be the number of the Emacs version we're building,
+;;;0;;### like `18.59' or `19.0'. version_us holds the same value, with
+;;;0;;### the dot exchanged to an underscore.
+;;;0;;version=@version@
+;;;0;;version_us=@version_us@
+;;;0;;
+;;;0;;### This should be the name of the configuration we're building Emacs
+;;;0;;### for, like `mips-dec-ultrix' or `sparc-sun-sunos'.
+;;;0;;configuration=@configuration@
+;;;0;;
+;;;0;;# ==================== Where To Install Things ====================
+;;;0;;
+;;;0;;# N.B.: As VMS has a stronger knowledge of disks, and things might
+;;;0;;# be hard to handle, we use three variables for each directory
+;;;0;;# specification:
+;;;0;;#	foo		holding the whole specification
+;;;0;;#	foo_dev		holding the device part (always has a colon)
+;;;0;;#	foo_dir		holding the directory (no brackets) part
+;;;0;;
+;;;0;;# The default location for installation.  Everything is placed in
+;;;0;;# subdirectories of this directory.  The default values for many of
+;;;0;;# the variables below are expressed in terms of this one, so you may
+;;;0;;# not need to change them.  This defaults to /usr/local.
+;;;0;;prefix=@prefix@
+;;;0;;
+;;;0;;# Like `prefix', but used for architecture-specific files.
+;;;0;;exec_prefix=@exec_prefix@
+;;;0;;
+;;;0;;# Where to install Emacs and other binaries that people will want to
+;;;0;;# run directly (like etags).
+;;;0;;bindir=@bindir@
+;;;0;;
+;;;0;;# Where to install architecture-independent data files.
+;;;0;;# $(lispdir) and $(etcdir) are subdirectories of this.
+;;;0;;datadir=@datadir@
+;;;0;;
+;;;0;;# Where to install and expect the files that Emacs modifies as it
+;;;0;;# runs.  These files are all architecture-independent. Right now, the
+;;;0;;# only such data is the locking directory; $(lockdir) is a
+;;;0;;# subdirectory of this.
+;;;0;;statedir=@statedir@
+;;;0;;
+;;;0;;# Where to install and expect executable files to be run by Emacs
+;;;0;;# rather than directly by users, and other architecture-dependent
+;;;0;;# data.  $(archlibdir) is a subdirectory of this.
+;;;0;;libdir=@libdir@
+;;;0;;
+;;;0;;# Where to install Emacs's man pages, and what extension they should have.
+;;;0;;mandir=@mandir@
+;;;0;;manext=.HLP
+;;;0;;
+;;;0;;# Where to install and expect the info files describing Emacs.
+;;;0;;# In the past, this defaulted to a subdirectory of
+;;;0;;# $(prefix)/lib/emacs, but since there are now many packages
+;;;0;;# documented with the texinfo system, it is inappropriate to imply
+;;;0;;# that it is part of Emacs.
+;;;0;;infodir=@infodir@
+;;;0;;
+;;;0;;# Where to find the source code.  The source code for Emacs's C kernel is
+;;;0;;# expected to be in $(srcdir)/src, and the source code for Emacs's
+;;;0;;# utility programs is expected to be in $(srcdir)/lib-src.  This is
+;;;0;;# set by the configure script's `--srcdir' option.
+;;;0;;srcdir=@srcdir@
+;;;0;;
+;;;0;;# Where to find some usefull VMS scripts.
+;;;0;;vmssrcdir=@srcdir_dev@[@srcdir_dir@.VMS]
+;;;0;;
+;;;0;;# Where to find the lisp directory.
+;;;0;;lispsrcdir=@srcdir_dev@[@srcdir_dir@.LISP]
+;;;0;;
+;;;0;;# Tell make where to find source files; this is needed for the makefiles.
+;;;0;;# Unfortunatelly, MMS does not use this...
+;;;0;;VPATH=@srcdir@
+;;;0;;
+;;;0;;# ==================== Emacs-specific directories ====================
+;;;0;;
+;;;0;;# These variables hold the values Emacs will actually use.  They are
+;;;0;;# based on the values of the standard Make variables above.
+;;;0;;
+;;;0;;# Where to install the lisp files distributed with
+;;;0;;# Emacs.  This includes the Emacs version, so that the
+;;;0;;# lisp files for different versions of Emacs will install
+;;;0;;# themselves in separate directories.
+;;;0;;lispdir=@lispdir@
+;;;0;;
+;;;0;;# Directories Emacs should search for lisp files specific
+;;;0;;# to this site (i.e. customizations), before consulting
+;;;0;;# $(lispdir).  This should be a colon-separated list of
+;;;0;;# directories.
+;;;0;;locallisppath=@locallisppath@
+;;;0;;
+;;;0;;# Where Emacs will search to find its lisp files.  Before
+;;;0;;# changing this, check to see if your purpose wouldn't
+;;;0;;# better be served by changing locallisppath.  This
+;;;0;;# should be a comma-separated list of directories.
+;;;0;;lisppath=@lisppath@
+;;;0;;
+;;;0;;# Where Emacs will search for its lisp files while
+;;;0;;# building.  This is only used during the process of
+;;;0;;# compiling Emacs, to help Emacs find its lisp files
+;;;0;;# before they've been installed in their final location.
+;;;0;;# It's usually identical to lisppath, except that
+;;;0;;# it does not include locallisppath, and the
+;;;0;;# entry for the directory containing the installed lisp
+;;;0;;# files has been replaced with ../lisp.  This should be a
+;;;0;;# comma-separated list of directories.
+;;;0;;buildlisppath=$(locallisppath),[-.lisp],$(lispsrcdir)
+;;;0;;
+;;;0;;# Where to install the other architecture-independent
+;;;0;;# data files distributed with Emacs (like the tutorial,
+;;;0;;# the cookie recipes and the Zippy database). This path
+;;;0;;# usually contains the Emacs version number, so the data
+;;;0;;# files for multiple versions of Emacs may be installed
+;;;0;;# at once.
+;;;0;;etcdir=@etcdir@
+;;;0;;
+;;;0;;# Where to create and expect the locking directory, where
+;;;0;;# the Emacs locking code keeps track of which files are
+;;;0;;# currently being edited.
+;;;0;;lockdir=@lockdir@
+;;;0;;
+;;;0;;# Where to put executables to be run by Emacs rather than
+;;;0;;# the user.  This path usually includes the Emacs version
+;;;0;;# and configuration name, so that multiple configurations
+;;;0;;# for multiple versions of Emacs may be installed at
+;;;0;;# once.
+;;;0;;archlibdir=@archlibdir@
+;;;0;;
+;;;0;;# Where to put the docstring file.
+;;;0;;docdir=@docdir@
+;;;0;;
+;;;0;;# Where to install and expect VMS-specific files to be run
+;;;0;;# by Emacs rather than the user.
+;;;0;;vmslibdir=@vmslibdir@
+;;;0;;
+;;;0;;# Where to install the startup script, which sets up logical names.
+;;;0;;startupdir=@startupdir@
+;;;0;;
+;;;0;;# Where to install the DECWindows vue script, which you may use to start
+;;;0;;# Emacs from the window manager menu.
+;;;0;;vuelibdir=@vuelibdir@
+;;;0;;
+;;;0;;# ==================== Utility Programs for the Build ====================
+;;;0;;
+;;;0;;# Allow the user to specify the install program.
+;;;0;;INSTALL = @INSTALL@
+;;;0;;INSTALL_PROGRAM = @INSTALL_PROGRAM@
+;;;0;;INSTALL_DATA = @INSTALL_DATA@
+;;;0;;INSTALL_DATA_QUOTED = @INSTALL_DATA_QUOTED@
+;;;0;;
+;;;0;;# ============================= Targets ==============================
+;;;0;;
+;;;0;;# What emacs should be called when installed.
+;;;0;;EMACS = emacs
+;;;0;;
+;;;0;;# Subdirectories to make recursively.  `lisp' is not included
+;;;0;;# because the compiled lisp files are part of the distribution
+;;;0;;# and you cannot remake them without installing Emacs first.
+;;;0;;SUBDIR = [.vms],[.lib-src],[.src]
+;;;0;;
+;;;0;;# The makefiles of the directories in $SUBDIR.
+;;;0;;SUBDIR_MAKEFILES = [.lib-src]descrip.mms,[.src]descrip.mms,-
+;;;0;;[.oldXMenu]descrip.mms,[.vms]descrip.mms, [.lwlib]descrip.mms
+;;;0;;
+;;;0;;# Subdirectories to install, and where they'll go.
+;;;0;;# lib-src's makefile knows how to install it, so we don't do that here.
+;;;0;;# When installing the info files, we need to do special things to
+;;;0;;# avoid nuking an existing dir file, so we don't do that here;
+;;;0;;# instead, we have written out explicit code in the `install' targets.
+;;;0;;COPYDIR = @srcdir_dev@[@srcdir_dir@.ETC],@srcdir_dev@[@srcdir_dir@.LISP]
+;;;0;;COPYDESTS = $(etcdir),$(lispdir)
+;;;0;;
+;;;0;;#all : paths-force [.vms]runtemacs.com [.vms]vmslink.opt \
+;;;0;;#	setup_config [.vms]rebuild.com $(SUBDIR)
+;;;0;;#	@ !
+;;;0;;all : paths-force [.vms]runtemacs.com [.vms]vmslink.opt \
+;;;0;;	setup_config $(SUBDIR)
+;;;0;;	@ !
+;;;0;;
+;;;0;;debug : set_debug all
+;;;0;;	@ !
+;;;0;;
+;;;0;;set_debug : FRC.debug
+;;;0;;	all = "all_debug"
+;;;0;;
+;;;0;;removenullpaths=sed -e 's/^://' -e 's/:$$//' -e 's/::/:/'
+;;;0;;
+;;;0;;# Diverse TPU procedures we might use.
+;;;0;;[.vms]routines.tpu$section : $(vmssrcdir)routines.tpu
+;;;0;;	set def [.vms]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) routines.tpu$section
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;# Note that sed is not in /bin on 386bsd.
+;;;0;;[.src]paths.h : descrip.mms @srcdir_dev@[@srcdir_dir@.SRC]paths.h_in -
+;;;0;;		FRC.src.paths.h [.vms]routines.tpu$section
+;;;0;;	@ write sys$output "Producing `[.src]paths.h' from `@srcdir_dev@[@srcdir_dir@.SRC]paths.h_in'."
+;;;0;;	@ open/write foo paths.tpu_tmp
+;;;0;;	@ write foo "lisppath := removenullpaths (""$(lisppath)"");"
+;;;0;;	@ write foo "buildlisppath := removenullpaths (""$(buildlisppath)"");"
+;;;0;;	@ write foo "input_file:=GET_INFO(COMMAND_LINE, ""file_name"");"
+;;;0;;	@ write foo "main_buffer := CREATE_BUFFER (""main"", input_file);"
+;;;0;;	@ write foo "p_0_or_more_spc := (span("" ""+ASCII(9)) | """");"
+;;;0;;	@ write foo "position (beginning_of (main_buffer));"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_LOADSEARCH"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + lisppath + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_DUMPLOADSEARCH"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + buildlisppath + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_EXEC"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(archlibdir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_INFO"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(infodir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_DATA"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(etcdir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_DOC"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(docdir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_LOCK"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(lockdir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""TERMCAP_NAME"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(etcdir)TERMCAP.SRC"" + """""""");"
+;;;0;;	@ write foo "write_file(main_buffer, get_info (command_line, ""output_file""));"
+;;;0;;	@ write foo "quit;"
+;;;0;;	@ close foo
+;;;0;;	@ save_mesg = f$environment("MESSAGE")
+;;;0;;	@ set message/nofacility/noidentification/noseverity/notext
+;;;0;;	@ edit/tpu/section=sys$disk:[.vms]routines.tpu$section/nodisplay -
+;;;0;;		/command=paths.tpu_tmp/out=[.src]paths.h_tmp -
+;;;0;;		@srcdir_dev@[@srcdir_dir@.SRC]paths.h_in
+;;;0;;	@ delete paths.tpu_tmp;*
+;;;0;;	@ set message'save_mesg'
+;;;0;;	@ @$(srcdir)move-if-change [.src]paths.h_tmp [.src]paths.h
+;;;0;;
+;;;0;;# For `mms all',
+;;;0;;# we force the rebuilding of src/paths.h because the user might give
+;;;0;;# make different values for the various directories.  Since we use
+;;;0;;# move-if-change, src/paths.h only actually changes if the user did
+;;;0;;# something notable, so the only unnecessary work we do is in building
+;;;0;;# src/paths.h.tmp, which isn't much.
+;;;0;;paths-force : FRC.src.paths.h [.vms]routines.tpu$section
+;;;0;;	@ write sys$output "Producing `[.src]paths.h' from `@srcdir_dev@[@srcdir_dir@.SRC]paths.h_in'."
+;;;0;;	@ open/write foo paths.tpu_tmp
+;;;0;;	@ write foo "lisppath := removenullpaths (""$(lisppath)"");"
+;;;0;;	@ write foo "buildlisppath := removenullpaths (""$(buildlisppath)"");"
+;;;0;;	@ write foo "input_file:=GET_INFO(COMMAND_LINE, ""file_name"");"
+;;;0;;	@ write foo "main_buffer := CREATE_BUFFER (""main"", input_file);"
+;;;0;;	@ write foo "p_0_or_more_spc := (span("" ""+ASCII(9)) | """");"
+;;;0;;	@ write foo "position (beginning_of (main_buffer));"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_LOADSEARCH"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + lisppath + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_DUMPLOADSEARCH"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + buildlisppath + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_EXEC"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(archlibdir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_INFO"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(infodir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_DATA"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(etcdir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_DOC"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(docdir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""PATH_LOCK"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(lockdir)"" + """""""");"
+;;;0;;	@ write foo "TPU_substitute(LINE_BEGIN + ""#"" + unanchor +"
+;;;0;;	@ write foo "               ""TERMCAP_NAME"","
+;;;0;;	@ write foo "               unanchor, LINE_END,"
+;;;0;;	@ write foo "               "" """""" + ""$(etcdir)TERMCAP.SRC"" + """""""");"
+;;;0;;	@ write foo "write_file(main_buffer, get_info (command_line, ""output_file""));"
+;;;0;;	@ write foo "quit;"
+;;;0;;	@ close foo
+;;;0;;	@ save_mesg = f$environment("MESSAGE")
+;;;0;;	@ set message/nofacility/noidentification/noseverity/notext
+;;;0;;	@ edit/tpu/section=sys$disk:[.vms]routines.tpu$section/nodisplay -
+;;;0;;		/command=paths.tpu_tmp/out=[.src]paths.h_tmp -
+;;;0;;		@srcdir_dev@[@srcdir_dir@.SRC]paths.h_in
+;;;0;;	@ delete paths.tpu_tmp;*
+;;;0;;	@ set message'save_mesg'
+;;;0;;	@ @$(srcdir)move-if-change [.src]paths.h_tmp [.src]paths.h
+;;;0;;
+;;;0;;[.vms]runtemacs.com : descrip.mms
+;;;0;;	@ write sys$output "Producing `[.vms]runtemacs.com'."
+;;;0;;	@ open/write foo [.vms]runtemacs.com_tmp
+;;;0;;	@ write foo "$! This is a subcommand to testemacs.com."
+;;;0;;	@ write foo "$! It was automatically generated."
+;;;0;;	@ write foo "$! Do NOT run this directly.  Instead, run testemacs.com"
+;;;0;;	@ write foo "$! and use the symbols `runtemacs' and `runtemacs_d'."
+;;;0;;	@ write foo "$ proc_dir = f$parse(""A.;0"",f$environment(""PROCEDURE"")) - ""A.;0"""
+;;;0;;	@ lisp_dir := @srcdir_dev@[@srcdir_dir@.LISP]
+;;;0;;	@ termcap_dir := @srcdir_dev@[@srcdir_dir@.ETC]
+;;;0;;	@ info_dir := @srcdir_dev@[@srcdir_dir@.INFO]
+;;;0;;	@ a = f$environment("DEFAULT")
+;;;0;;	@ set default [.lib-src]
+;;;0;;	@ lib_src_dir = f$environment("DEFAULT")
+;;;0;;	@ set default [-.etc]
+;;;0;;	@ etc_dir = f$environment("DEFAULT")
+;;;0;;	@ set default 'a'
+;;;0;;	@ write foo "$ args = """""
+;;;0;;	@ write foo "$ if args .nes. """" .or. p8 .nes. """" then args = p8 + "" "" + args"
+;;;0;;	@ write foo "$ if args .nes. """" .or. p7 .nes. """" then args = p7 + "" "" + args"
+;;;0;;	@ write foo "$ if args .nes. """" .or. p6 .nes. """" then args = p6 + "" "" + args"
+;;;0;;	@ write foo "$ if args .nes. """" .or. p5 .nes. """" then args = p5 + "" "" + args"
+;;;0;;	@ write foo "$ if args .nes. """" .or. p4 .nes. """" then args = p4 + "" "" + args"
+;;;0;;	@ write foo "$ if args .nes. """" .or. p3 .nes. """" then args = p3 + "" "" + args"
+;;;0;;	@ write foo "$ if args .nes. """" .or. p2 .nes. """" then args = p2 + "" "" + args"
+;;;0;;	@ write foo "$ define/user EMACSLOADPATH ""''lisp_dir',$(lisppath)"""
+;;;0;;	@ write foo "$ define/user EMACSPATH ""''lib_src_dir'"""
+;;;0;;	@ write foo "$ define/user EMACSDATA ""''etc_dir'"""
+;;;0;;	@ write foo "$ define/user EMACSDOC ""''etc_dir'"""
+;;;0;;	@ write foo "$ define/user TERMCAP ""''termcap_dir'TERMCAP.SRC"""
+;;;0;;	@ write foo "$ define/user INFOPATH ""''info_dir'"""
+;;;0;;	@ write foo "$ define/user SYS$INPUT SYS$COMMAND"
+;;;0;;	@ write foo "$ mcr 'proc_dir'temacs'p1' -map 'proc_dir'temacs'p1'.dump 'args'"
+;;;0;;	@ write foo "$ exit"
+;;;0;;	@ close foo
+;;;0;;	@ @$(srcdir)move-if-change [.vms]runtemacs.com_tmp [.vms]runtemacs.com
+;;;0;;
+;;;0;;[.vms]vmslink.opt : descrip.mms
+;;;0;;	@ write sys$output "Producing `[.vms]vmslink.opt'."
+;;;0;;	@ open/write foo [.vms]vmslink.opt_tmp
+;;;0;;	@ @$(vmssrcdir)loop_args lib "$(LOADLIBES)" " " "write foo lib" ";"
+;;;0;;	@ close foo
+;;;0;;	@ @$(srcdir)move-if-change [.vms]vmslink.opt_tmp [.vms]vmslink.opt
+;;;0;;
+;;;0;;setup_config : [.vms]vmslink.opt descrip.mms
+;;;0;;	@ write sys$output "Producing `[.vms]config.dat'."
+;;;0;;	@ open/write foo [.vms]config.dat_tmp
+;;;0;;	@ write foo "@"+"version"+"@"
+;;;0;;	@ write foo "$(version)"
+;;;0;;	@ write foo "@"+"version_us"+"@"
+;;;0;;	@ write foo "$(version_us)"
+;;;0;;	@ write foo "@"+"configuration"+"@"
+;;;0;;	@ write foo "$(configuration)"
+;;;0;;	@ write foo "@"+"libsrc_libs"+"@"
+;;;0;;	@ write foo "$(libsrc_libs)"
+;;;0;;	@ write foo "@"+"bindir"+"@"
+;;;0;;	@ write foo "$(bindir)"
+;;;0;;	@ write foo "@"+"datadir"+"@"
+;;;0;;	@ write foo "$(datadir)"
+;;;0;;	@ write foo "@"+"statedir"+"@"
+;;;0;;	@ write foo "$(statedir)"
+;;;0;;	@ write foo "@"+"libdir"+"@"
+;;;0;;	@ write foo "$(libdir)"
+;;;0;;	@ write foo "@"+"mandir"+"@"
+;;;0;;	@ write foo "$(mandir)"
+;;;0;;	@ write foo "@"+"infodir"+"@"
+;;;0;;	@ write foo "$(infodir)"
+;;;0;;	@ ! write foo "@"+"srcdir"+"@"
+;;;0;;	@ ! write foo "$(srcdir)"
+;;;0;;	@ ! write foo "@"+"vmssrcdir"+"@"
+;;;0;;	@ ! write foo "$(vmssrcdir)"
+;;;0;;	@ write foo "@"+"lispdir"+"@"
+;;;0;;	@ write foo "$(lispdir)"
+;;;0;;	@ write foo "@"+"locallisppath"+"@"
+;;;0;;	@ write foo "$(locallisppath)"
+;;;0;;	@ write foo "@"+"lisppath"+"@"
+;;;0;;	@ write foo "$(lisppath)"
+;;;0;;	@ ! write foo "@"+"buildlisppath"+"@"
+;;;0;;	@ ! write foo "$(buildlisppath)"
+;;;0;;	@ write foo "@"+"etcdir"+"@"
+;;;0;;	@ write foo "$(etcdir)"
+;;;0;;	@ write foo "@"+"lockdir"+"@"
+;;;0;;	@ write foo "$(lockdir)"
+;;;0;;	@ write foo "@"+"archlibdir"+"@"
+;;;0;;	@ write foo "$(archlibdir)"
+;;;0;;	@ write foo "@"+"vmslibdir"+"@"
+;;;0;;	@ write foo "$(vmslibdir)"
+;;;0;;	@ write foo "@"+"startupdir"+"@"
+;;;0;;	@ write foo "$(startupdir)"
+;;;0;;	@ write foo "@"+"vuelibdir"+"@"
+;;;0;;	@ write foo "$(vuelibdir)"
+;;;0;;	@ write foo "@"+"all_logicals"+"@"
+;;;0;;	@ __result = ""
+;;;0;;	@ __mode = ""
+;;;0;;	@ delete/symbol/local __result
+;;;0;;	@ delete/symbol/local __mode
+;;;0;;	@ lnm = f$parse("$(bindir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(datadir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(statedir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(libdir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(mandir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(infodir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ ! lnm = f$parse("$(srcdir)",,,"DEVICE")-":"
+;;;0;;	@ ! @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ ! flag := no
+;;;0;;	@ ! if __result .nes. "" then flag := yes
+;;;0;;	@ ! if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ ! if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ ! lnm = f$parse("$(vmssrcdir)",,,"DEVICE")-":"
+;;;0;;	@ ! @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ ! flag := no
+;;;0;;	@ ! if __result .nes. "" then flag := yes
+;;;0;;	@ ! if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ ! if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(lispdir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(etcdir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(lockdir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(archlibdir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(vmslibdir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(startupdir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ lnm = f$parse("$(vuelibdir)",,,"DEVICE")-":"
+;;;0;;	@ @$(vmssrcdir)decomplnm 'lnm' __result DIRS,ATTRIBUTES __mode
+;;;0;;	@ flag := no
+;;;0;;	@ if __result .nes. "" then flag := yes
+;;;0;;	@ if flag then write foo " D\",lnm,"\",__mode,"\ -"
+;;;0;;	@ if flag then @$(vmssrcdir)loop_sym v __result "," "if next_v .nes. "","" then write foo ""    "",v,"",-"";if next_v .eqs. "","" then write foo ""    "",v" ";" next_v
+;;;0;;	@ close foo
+;;;0;;	@ @$(srcdir)move-if-change [.vms]config.dat_tmp [.vms]config.dat
+;;;0;;
+;;;0;;[.src] : [.lib-src] [.vms] FRC.src [.src]paths.h
+;;;0;;
+;;;0;;# This ought to depend on src/paths.h, so that in parallel make
+;;;0;;# src/paths.h will be available for the compilations in lib-src.
+;;;0;;# But that causes trouble in `make install' if a different prefix
+;;;0;;# is specified at that time.
+;;;0;;[.lib-src] : [.vms] FRC.lib-src [.src]paths.h
+;;;0;;
+;;;0;;[.vms] : FRC.vms
+;;;0;;
+;;;0;;#.RECURSIVE : $(SUBDIR)
+;;;0;;
+;;;0;;[.vms] : $(SUBDIR_MAKEFILES) FRC
+;;;0;;	set def [.vms]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) -
+;;;0;;		all_hackargv,all_utime,hackdebug.exe,check_verb.exe
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;[.lib-src] : $(SUBDIR_MAKEFILES) FRC
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) all
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;[.src] : $(SUBDIR_MAKEFILES) FRC
+;;;0;;	set def [.src]
+;;;0;;	! $(MAKE) $(MMSQUALIFIERS) really-oldXMenu
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) 'all'
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;#blessmail: ${SUBDIR_MAKEFILES} src FRC
+;;;0;;#	cd lib-src; $(MAKE) maybe-blessmail $(MFLAGS) MAKE='${MAKE}'
+;;;0;;
+;;;0;;descrip.mms : $(srcdir)descrip.mms_in config.status
+;;;0;;	@config.status
+;;;0;;	@ write sys$output "Please start over..."
+;;;0;;	@ stop
+;;;0;;
+;;;0;;[.src]descrip.mms : @srcdir_dev@[@srcdir_dir@.SRC]descrip.mms_in_in config.status
+;;;0;;	@config.status
+;;;0;;	@ write sys$output "Please start over..."
+;;;0;;	@ stop
+;;;0;;
+;;;0;;[.lib-src]descrip.mms : @srcdir_dev@[@srcdir_dir@.LIB-SRC]descrip.mms_in_in config.status
+;;;0;;	@config.status
+;;;0;;	@ write sys$output "Please start over..."
+;;;0;;	@ stop
+;;;0;;
+;;;0;;[.oldXMenu]descrip.mms : @srcdir_dev@[@srcdir_dir@.oldXMenu]descrip.mms_in config.status
+;;;0;;	@config.status
+;;;0;;	@ write sys$output "Please start over..."
+;;;0;;	@ stop
+;;;0;;
+;;;0;;[.lwlib]descrip.mms : @srcdir_dev@[@srcdir_dir@.LWLIB]descrip.mms_in config.status
+;;;0;;	@config.status
+;;;0;;	@ write sys$output "Please start over..."
+;;;0;;	@ stop
+;;;0;;
+;;;0;;[.vms]descrip.mms : @srcdir_dev@[@srcdir_dir@.VMS]descrip.mms_in config.status
+;;;0;;	@config.status
+;;;0;;	@ write sys$output "Please start over..."
+;;;0;;	@ stop
+;;;0;;
+;;;0;;# ==================== Installation ====================
+;;;0;;
+;;;0;;## If we let lib-src do its own installation, that means we
+;;;0;;## don't have to duplicate the list of utilities to install in
+;;;0;;## this Makefile as well.
+;;;0;;
+;;;0;;## On AIX, use tar xBf.
+;;;0;;## On Xenix, use tar xpf.
+;;;0;;
+;;;0;;#.PHONY: install mkdir
+;;;0;;
+;;;0;;## We delete each directory in $(COPYDESTS) before we copy into it;
+;;;0;;## that way, we can reinstall over directories that have been put in
+;;;0;;## place with their files read-only (perhaps because they are checked
+;;;0;;## into RCS).  In order to make this safe, we make sure that the
+;;;0;;## source exists and is distinct from the destination.
+;;;0;;install : [.vms]vmslink.opt $(SUBDIR) \
+;;;0;;		install-arch-dep install-arch-indep \
+;;;0;;		install-doc installdatabase
+;;;0;;	@ !
+;;;0;;
+;;;0;;installdatabase : setup_config [.vms]emacs_startup.com
+;;;0;;	@ @$(vmssrcdir)gnu_install_startup emacs $(version) -
+;;;0;;		[.vms]emacs_startup.com $(startupdir) DATABASE
+;;;0;;
+;;;0;;install_no_database : [.vms]vmslink.opt $(SUBDIR) \
+;;;0;;		install-arch-dep install-arch-indep \
+;;;0;;		install-doc installstartup
+;;;0;;	@ !
+;;;0;;
+;;;0;;installstartup : setup_config [.vms]emacs_startup.com
+;;;0;;	@$(vmssrcdir)gnu_install_startup emacs $(version) -
+;;;0;;		[.vms]emacs_startup.com $(startupdir) NODATABASE
+;;;0;;
+;;;0;;[.vms]emacs_startup.com : [.vms]emacs_startup.dat
+;;;0;;	@ write sys$output "Producing `[.vms]emacs_startup.com' from `$(vmssrcdir)emacs_startup.dat'."
+;;;0;;	@ @$(vmssrcdir)gnu_generate_script [.vms]emacs_startup.dat -
+;;;0;;		[.vms]emacs_startup.com_tmp
+;;;0;;	@ @$(srcdir)move-if-change [.vms]emacs_startup.com_tmp [.vms]emacs_startup.com
+;;;0;;
+;;;0;;[.vms]emacs_startup.dat : [.vms]config.dat $(vmssrcdir)emacs_startup.dat_in
+;;;0;;	@ write sys$output "Producing `[.vms]emacs_startup.dat' from `$(vmssrcdir)emacs_startup.dat_in' and `[.vms]config.dat'."
+;;;0;;	@ @$(vmssrcdir)gnu_generate_data $(vmssrcdir)emacs_startup.dat_in -
+;;;0;;		[.vms]config.dat [.vms]emacs_startup.dat_tmp
+;;;0;;	@ @$(srcdir)move-if-change [.vms]emacs_startup.dat_tmp -
+;;;0;;		[.vms]emacs_startup.dat
+;;;0;;
+;;;0;;### Note that we copy the DOC-* files from the build etc directory
+;;;0;;### as well as lots of things from $(srcdir)/etc.
+;;;0;;install-arch-dep : mkdir
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) install
+;;;0;;	set def [-]
+;;;0;;	$(INSTALL_PROGRAM) [.vms]temacs.exe $(bindir)emacs-$(version_us).exe /log
+;;;0;;	$(INSTALL_PROGRAM) [.vms]temacs.dump $(bindir)emacs-$(version_us).dump /log
+;;;0;;	! $(INSTALL_PROGRAM) [.vms]rebuild.com $(bindir)rebuild-emacs-$(version_us).com /log
+;;;0;;	- purge/keep=2 $(bindir)emacs-$(version_us).exe,.dump /log
+;;;0;;	- ! purge $(bindir)rebuild-emacs-$(version_us).com /log
+;;;0;;	if f$search ("[.lib-src]fns-*.el") .nes. "" -
+;;;0;;	  then $(INSTALL_DATA) [.lib-src]fns-*.el $(archlibdir) /log
+;;;0;;	@ !
+;;;0;;
+;;;0;;### Note that we copy the DOC-* files from the build etc directory
+;;;0;;### as well as lots of things from ${srcdir}/etc.
+;;;0;;install-arch-indep : mkdir
+;;;0;;	@ ! Had to split this one up a little too...
+;;;0;;	@ ! THIS IS COMPLETE STUPIDITY!!!!!
+;;;0;;	@ !line1 = "result = """""
+;;;0;;	@ !line2 = "delete/sym/local result"
+;;;0;;	@ !line3 = "@$(vmssrcdir)compare_dirs 'dir1' 'dir2' result"
+;;;0;;	@ !line4 = "dest = """""
+;;;0;;	@ !line5 = "delete/sym/local dest"
+;;;0;;	@ !line6 = "@$(vmssrcdir)dirfilename 'dir1' dest"
+;;;0;;	@ !line7 = "if .not. result .and. dest .nes. """" then @$(vmssrcdir)recurdel 'dest'
+;;;0;;	@ !@$(vmssrcdir)loop_args2 dir1 dir2 "$(COPYDESTS)" "$(COPYDIR)" "," "'line1';'line2';'line3';'line4';'line5';'line6';'line7'" ";" verbose
+;;;0;;	@ !
+;;;0;;	@ ! Had to split this one up a little too...
+;;;0;;	@ line1 = "create/dir 'dest'"
+;;;0;;	@ line2 = "result = """""
+;;;0;;	@ line3 = "delete/sym/local result"
+;;;0;;	@ line4 = "@$(vmssrcdir)compare_dirs 'dir' 'dest' result"
+;;;0;;	@ line5 = "if result then result = f$search(dir+""*.*"") .nes. """""
+;;;0;;	@ line6 = "sdir=dir-""]"""
+;;;0;;	@ line7 = "sdest=dest-""]"""
+;;;0;;	@ line8 = "if .not. result then write sys$output ""Copying "",dir"
+;;;0;;	@ line9 = "if .not. result then @$(vmssrcdir)copy 'sdir'...]*.* 'sdest'...]/prot=(o:rwed,w:re)/log"
+;;;0;;	@ line10 = "if .not. result then purge 'sdest'...]/log"
+;;;0;;	@ write sys$output "blahblah"
+;;;0;;	@ @$(vmssrcdir)loop_args2 dest dir "$(COPYDESTS)" "$(COPYDIR)" "," "'line1';'line2';'line3';'line4';'line5';'line6';'line7';'line8';'line9';'line10'" ";" verbose
+;;;0;;	@ !
+;;;0;;	@ result = "" ! So we do not get a stupid message on the next line...
+;;;0;;	-@ delete/sym/local result
+;;;0;;	@$(vmssrcdir)compare_dirs @srcdir_dev@[@srcdir_dir@.INFO] $(infodir) result
+;;;0;;	if .not.result then -
+;;;0;;		if f$search("$(infodir)dir.") .eqs. "" -
+;;;0;;			.and.f$search("@srcdir_dev@[@srcdir_dir@.INFO]dir.") .nes. "" then -
+;;;0;;				$(INSTALL_DATA) @srcdir_dev@[@srcdir_dir@.INFO]dir. $(infodir)dir. /log
+;;;0;;	if .not.result then -
+;;;0;;		@$(vmssrcdir)loop_args f "ada-mode*.* autotype*.* ccmode*.* cl*.* dired-x*.* ebrowse*.* ediff*.* efaq*.* emacs*.* eshell*.* eudc*.* forms*.* gnus*.* idlwave*.* info*.* message*.* mh-e*.* pcl-cvs*.* reftex*.* sc*.* speedbar*.* vip*.* widget*.* woman*.*" " " "$(INSTALL_DATA_QUOTED) @srcdir_dev@[@srcdir_dir@.INFO]'f' $(infodir) /log" ";" verbose
+;;;0;;	- if .not.result then purge $(infodir) /log
+;;;0;;	@ result = "" ! So we do not get a stupid message on the next line...
+;;;0;;	-@ delete/sym/local result
+;;;0;;	@$(vmssrcdir)compare_dirs $(vmssrcdir) $(vmslibdir) result
+;;;0;;	if .not.result then -
+;;;0;;		$(INSTALL_PROGRAM) $(vmssrcdir)kepteditor.com $(vmslibdir) /log
+;;;0;;	- if .not.result then purge $(vmslibdir)/log
+;;;0;;	sdir = f$env("DEFAULT") - "]" + ".VMS]"
+;;;0;;	@ !
+;;;0;;	! @$(vmssrcdir)compare_dirs 'sdir' $(vuelibdir) result
+;;;0;;	! if .not.result then -
+;;;0;;	!	$(INSTALL_PROGRAM) [.vms]emacs_vue.com $(vuelibdir)emacs_vue-$(version_us).com /log
+;;;0;;	! - if .not.result then purge $(vuelibdir)emacs_vue.com /log
+;;;0;;	@ !
+;;;0;;	if f$search("$(mandir)gnu.hlb") .eqs. "" then -
+;;;0;;		library/create/help $(mandir)gnu.hlb
+;;;0;;	set file/prot=(w:r) $(mandir)gnu.hlb
+;;;0;;	-@ @$(vmssrcdir)loop_args page "emacs etags" " " "library/replace $(mandir)gnu.hlb @srcdir_dev@[@srcdir_dir@.ETC]'page'.hlp /log" ";" verbose
+;;;0;;
+;;;0;;install-doc : mkdir
+;;;0;;	sdir=f$environment("DEFAULT")-"]"+".ETC]"
+;;;0;;	@ result = "" ! So we do not get a stupid message on the next line...
+;;;0;;	-@ delete/sym/local result
+;;;0;;	@ write sys$output "Copying [.etc]DOC*.* ..."
+;;;0;;	@$(vmssrcdir)copy [.etc]doc*.* $(docdir) /prot=(o:rwed,w:re)/log
+;;;0;;	purge $(docdir)doc*.* /log
+;;;0;;
+;;;0;;### Build all the directories we're going to install Emacs in.	Since
+;;;0;;### we may be creating several layers of directories (for example,
+;;;0;;### /usr/local/lib/emacs/19.0/mips-dec-ultrix4.2), we use make-path
+;;;0;;### instead of mkdir.  Not all systems' mkdirs have the `-p' flag.
+;;;0;;### VMS needs it as well, to take several arguments...
+;;;0;;mkdir : FRC.mkdir
+;;;0;;	create/dir/prot=(s:rwed,o:rwed,g:re,w:re) $(COPYDESTS)
+;;;0;;	create/dir/prot=(s:rwed,o:rwed,g:rwe,w:rwe) $(lockdir)
+;;;0;;	create/dir/prot=(s:rwed,o:rwed,g:re,w:re) $(infodir),\
+;;;0;;		$(mandir),$(bindir),$(datadir),$(docdir),$(libdir),\
+;;;0;;		$(locallisppath),$(vmslibdir),$(startupdir),$(vuelibdir)
+;;;0;;
+;;;0;;### Delete all the installed files that the `install' target would
+;;;0;;### create (but not the noninstalled files such as `make all' would
+;;;0;;### create).
+;;;0;;###
+;;;0;;### Don't delete the lisp and etc directories if they're in the source tree.
+;;;0;;uninstall :
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) uninstall
+;;;0;;	set def [-]
+;;;0;;	@ line1 = "result = """""
+;;;0;;	@ line2 = "delete/sym/local result"
+;;;0;;	@ line3 = "@$(vmssrcdir)compare_dirs 'dir' $(srcdir) result"
+;;;0;;	@ line4 = "dest = """""
+;;;0;;	@ line5 = "delete/sym/local dest"
+;;;0;;	@ line6 = "@$(vmssrcdir)dirfilename 'dir' dest"
+;;;0;;	@ line7 = "if dest .nes. """" then @$(vmssrcdir)recurdel 'dest'
+;;;0;;	@ line8 = "if dest - ""@datadir_dev@[@datadir_dir@.EMACS.$(version_us)"" .nes. dest then @$(vmssrcdir)recurdel @datadir_dev@[@datadir_dir@.EMACS]$(version_us).DIR"
+;;;0;;	@ @$(vmssrcdir)loop_args dir "$(lispdir),$(etcdir)" "," "'line1';'line2';'line3';'line4';'line5';'line6';'line7';'line8'" ";" verbose
+;;;0;;	- delete $(infodir)cl*.*;*,emacs*.*;*,forms*.*;*,info*.*;*,vip*.*;*
+;;;0;;	- library/delete $(mandir)gnu.hlb emacs,etags
+;;;0;;	- delete $(bindir)emacs-$(version_us).exe;*,.dump;*
+;;;0;;
+;;;0;;
+;;;0;;### Some makes seem to remember that they've built something called FRC,
+;;;0;;### so you can only use a given FRC once per makefile.
+;;;0;;FRC :
+;;;0;;	@ !
+;;;0;;FRC.src.paths.h :
+;;;0;;	@ !
+;;;0;;FRC.src :
+;;;0;;	@ !
+;;;0;;FRC.lib-src :
+;;;0;;	@ !
+;;;0;;FRC.vms :
+;;;0;;	@ !
+;;;0;;FRC.mkdir :
+;;;0;;	@ !
+;;;0;;FRC.mostlyclean :
+;;;0;;	@ !
+;;;0;;FRC.clean :
+;;;0;;	@ !
+;;;0;;FRC.distclean :
+;;;0;;	@ !
+;;;0;;FRC.realclean :
+;;;0;;	@ !
+;;;0;;FRC.debug :
+;;;0;;	@ !
+;;;0;;
+;;;0;;# ==================== Cleaning up and miscellanea ====================
+;;;0;;
+;;;0;;#.PHONY: mostlyclean clean distclean realclean extraclean
+;;;0;;
+;;;0;;### `mostlyclean'
+;;;0;;###      Like `clean', but may refrain from deleting a few files that people
+;;;0;;###      normally don't want to recompile.  For example, the `mostlyclean'
+;;;0;;###      target for GCC does not delete `libgcc.a', because recompiling it
+;;;0;;###      is rarely necessary and takes a lot of time.
+;;;0;;mostlyclean : FRC.mostlyclean
+;;;0;;	set def [.src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) mostlyclean
+;;;0;;	set def [-]
+;;;0;;	set def [.oldXMenu]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) mostlyclean
+;;;0;;	set def [-]
+;;;0;;	set def [.lwlib]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) mostlyclean
+;;;0;;	set def [-]
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) mostlyclean
+;;;0;;	set def [-]
+;;;0;;	! skip this for now --ttn, 2004-04-28
+;;;0;;	! set def [.man]
+;;;0;;	! $(MAKE) $(MMSQUALIFIERS) mostlyclean
+;;;0;;	! set def [-]
+;;;0;;	set def [.vms]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) mostlyclean
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;### `clean'
+;;;0;;###      Delete all files from the current directory that are normally
+;;;0;;###      created by building the program.  Don't delete the files that
+;;;0;;###      record the configuration.  Also preserve files that could be made
+;;;0;;###      by building, but normally aren't because the distribution comes
+;;;0;;###      with them.
+;;;0;;###
+;;;0;;###      Delete `.dvi' files here if they are not part of the distribution.
+;;;0;;clean : FRC.clean
+;;;0;;	set def [.src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) clean
+;;;0;;	set def [-]
+;;;0;;	set def [.oldXMenu]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) clean
+;;;0;;	set def [-]
+;;;0;;	set def [.lwlib]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) clean
+;;;0;;	set def [-]
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) clean
+;;;0;;	set def [-]
+;;;0;;	! skip this for now --ttn, 2004-04-28
+;;;0;;	! set def [.man]
+;;;0;;	! $(MAKE) $(MMSQUALIFIERS) clean
+;;;0;;	! set def [-]
+;;;0;;	set def [.vms]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) clean
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;### `distclean'
+;;;0;;###      Delete all files from the current directory that are created by
+;;;0;;###      configuring or building the program.  If you have unpacked the
+;;;0;;###      source and built the program without creating any other files,
+;;;0;;###      `make distclean' should leave only the files that were in the
+;;;0;;###      distribution.
+;;;0;;top_distclean=\
+;;;0;;	rm -f config.status build-install ; \
+;;;0;;	rm -f Makefile $(SUBDIR_MAKEFILES) ; \
+;;;0;;	(cd lock ; rm -f *)
+;;;0;;distclean : FRC.distclean
+;;;0;;	set def [.src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) distclean
+;;;0;;	set def [-]
+;;;0;;	set def [.oldXMenu]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) distclean
+;;;0;;	set def [-]
+;;;0;;	set def [.lwlib]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) distclean
+;;;0;;	set def [-]
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) distclean
+;;;0;;	set def [-]
+;;;0;;	set def [.man]
+;;;0;;	- $(MAKE) $(MMSQUALIFIERS) distclean
+;;;0;;	set def [-]
+;;;0;;	set def [.vms]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) distclean
+;;;0;;	set def [-]
+;;;0;;	@$(vmssrcdir)delete config.status,build-install.
+;;;0;;	@$(vmssrcdir)delete descrip.mms,$(SUBDIR_MAKEFILES)
+;;;0;;	set def [.lock]
+;;;0;;	@$(vmssrcdir)delete *.*
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;
+;;;0;;### `realclean'
+;;;0;;###      Delete everything from the current directory that can be
+;;;0;;###      reconstructed with this Makefile.  This typically includes
+;;;0;;###      everything deleted by distclean, plus more: C source files
+;;;0;;###      produced by Bison, tags tables, info files, and so on.
+;;;0;;###
+;;;0;;###      One exception, however: `make realclean' should not delete
+;;;0;;###      `configure' even if `configure' can be remade using a rule in the
+;;;0;;###      Makefile.  More generally, `make realclean' should not delete
+;;;0;;###      anything that needs to exist in order to run `configure' and then
+;;;0;;###      begin to build the program.
+;;;0;;realclean : FRC.realclean
+;;;0;;	set def [.src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) realclean
+;;;0;;	set def [-]
+;;;0;;	set def [.oldXMenu]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) realclean
+;;;0;;	set def [-]
+;;;0;;	set def [.lwlib]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) realclean
+;;;0;;	set def [-]
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) realclean
+;;;0;;	set def [-]
+;;;0;;	set def [.man]
+;;;0;;	- $(MAKE) $(MMSQUALIFIERS) realclean
+;;;0;;	set def [-]
+;;;0;;	set def [.vms]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) realclean
+;;;0;;	set def [-]
+;;;0;;	@$(vmssrcdir)delete config.status,build-install.
+;;;0;;	@$(vmssrcdir)delete descrip.mms,$(SUBDIR_MAKEFILES)
+;;;0;;	set def [.lock]
+;;;0;;	@$(vmssrcdir)delete *.*
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;### This doesn't actually appear in the coding standards, but Karl
+;;;0;;### says GCC supports it, and that's where the configuration part of
+;;;0;;### the coding standards seem to come from.  It's like distclean, but
+;;;0;;### it deletes backup and autosave files too.
+;;;0;;extraclean :
+;;;0;;!	for i in $(SUBDIR); do (cd $$i; $(MAKE) $(MFLAGS) extraclean); done
+;;;0;;	@$(vmssrcdir)loop_args i "$(SUBDIR)" "," "set def 'i';$(MAKE) $(MMSQUALIFIERS) extraclean; set def [-]" ";"
+;;;0;;!	-(cd lock; rm *)
+;;;0;;!	-rm config.status config-tmp-*
+;;;0;;!	-rm -f *~ \/#*
+;;;0;;	- @$(vmssrcdir)delete [.lock]*.*
+;;;0;;	- @$(vmssrcdir)delete config.status,config-tmp-*.*
+;;;0;;	- @$(vmssrcdir)delete _$$*$$.,_$$*.*$$
+;;;0;;	- purge
+;;;0;;
+;;;0;;### Unlocking and relocking.  The idea of these productions is to reduce
+;;;0;;### hassles when installing an incremental tar of Emacs.  Do `make unlock'
+;;;0;;### before unlocking the file to take the write locks off all sources so
+;;;0;;### that tar xvof will overwrite them without fuss.  Then do `make relock'
+;;;0;;### afterward so that VC mode will know which files should be checked in
+;;;0;;### if you want to mung them.
+;;;0;;###
+;;;0;;### Note: it's no disaster if these productions miss a file or two; tar
+;;;0;;### and VC will swiftly let you know if this happens, and it is easily
+;;;0;;### corrected.
+;;;0;;SOURCES = ChangeLog.,GETTING.GNU_SOFTWARE,INSTALL.,descrip.mms_in,PROBLEMS., \
+;;;0;;	README.,build-install.in,configure.com,make-dist.com,move-if-change.com
+;;;0;;
+;;;0;;unlock :
+;;;0;;	set file/prot=(o:rwed) $(srcdir)$(SOURCES)
+;;;0;;	set def [.elisp]
+;;;0;;	-set file/prot=(o:rwed) descrip.mms,@srcdir_dev@[@srcdir_dir@.ELISP]README.,*.texi
+;;;0;;	set def [-]
+;;;0;;	set def [.etc]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) unlock
+;;;0;;	set def [-]
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) unlock
+;;;0;;	set def [-]
+;;;0;;	set def [.lisp]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) unlock
+;;;0;;	set def [-]
+;;;0;;	set def [.lisp.term]
+;;;0;;	set file/prot=o:rwed @srcdir_dev@[@srcdir_dir@.lisp.term]README.,*.el
+;;;0;;	set def [-]
+;;;0;;	set def [.man]
+;;;0;;	set file/prot=o:rwed @srcdir_dev@[@srcdir_dir@.MAN]*.texi*,ChangeLog.,split-man.com
+;;;0;;	set def [-]
+;;;0;;	set def [.oldXMenu]
+;;;0;;	set file/prot=o:rwed descrip.mms,@srcdir_dev@[@srcdir_dir@.oldXMenu]*.c,*.h,README.
+;;;0;;	set def [-]
+;;;0;;	set def [.lwlib]
+;;;0;;	set file/prot=o:rwed descrip.mms,@srcdir_dev@[@srcdir_dir@.LWLIB]*.c,*.h,README.
+;;;0;;	set def [-]
+;;;0;;	set def [.src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) unlock
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;relock :
+;;;0;;	set file/prot=(o:re) $(srcdir)$(SOURCES)
+;;;0;;	set def [.elisp]
+;;;0;;	-set file/prot=(o:re) descrip.mms,@srcdir_dev@[@srcdir_dir@.ELISP]README.,*.texi
+;;;0;;	set def [-]
+;;;0;;	set def [.etc]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) relock
+;;;0;;	set def [-]
+;;;0;;	set def [.lib-src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) relock
+;;;0;;	set def [-]
+;;;0;;	set def [.lisp]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) relock
+;;;0;;	set def [-]
+;;;0;;	set def [.lisp.term]
+;;;0;;	set file/prot=(o:re) @srcdir_dev@[@srcdir_dir@.lisp.term]README.,*.el
+;;;0;;	set def [-]
+;;;0;;	set def [.man]
+;;;0;;	set file/prot=(o:re) @srcdir_dev@[@srcdir_dir@.MAN]*.texi*,ChangeLog.,split-man.com
+;;;0;;	set def [-]
+;;;0;;	set def [.oldXMenu]
+;;;0;;	set file/prot=(o:re) descrip.mms,@srcdir_dev@[@srcdir_dir@.oldXMenu]*.c,*.h,README.
+;;;0;;	set def [-]
+;;;0;;	set def [.lwlib]
+;;;0;;	set file/prot=(o:re) descrip.mms,@srcdir_dev@[@srcdir_dir@.LWLIB]*.c,*.h,README.
+;;;0;;	set def [-]
+;;;0;;	set def [.src]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) relock
+;;;0;;	set def [-]
+;;;0;;
+;;;0;;TAGS :	[.lib-src]
+;;;0;;	set def [] ! a trick to get [ and ] as directory delimiters...
+;;;0;;	save_default = f$trnlnm("SYS$DISK") + f$directory()
+;;;0;;	! set def @srcdir_dev@[@srcdir_dir@.SRC]
+;;;0;;	set def [.src]
+;;;0;;	$(MAKE) xtags
+;;;0;;	set def 'save_default'
+;;;0;;
+;;;0;;check :
+;;;0;;	@ write sys$output "We don't have any tests for GNU Emacs yet."
+;;;0;;
+;;;0;;dist :
+;;;0;;	a = f$environment("DEFAULT")
+;;;0;;	set def $(srcdir)
+;;;0;;	@make-dist
+;;;0;;	set def 'a'
+;;;0;;
+;;;0;;#.PHONY: info dvi dist check
+;;;0;;force-info :
+;;;0;;	@ !
+;;;0;;# Note that man/Makefile knows how to
+;;;0;;# put the info files in $(srcdir),
+;;;0;;# so we can do ok running make in the build dir.
+;;;0;;info : force-info
+;;;0;;	a = f$environment("DEFAULT")
+;;;0;;	set default @srcdir_dev@[@srcdir_dir@.MAN]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) info
+;;;0;;	set default 'a'
+;;;0;;	! (cd lispref; $(MAKE) $(MFLAGS) info)
+;;;0;;	! (cd lispintro; $(MAKE) $(MFLAGS) info)
+;;;0;;
+;;;0;;dvi :
+;;;0;;	a = f$environment("DEFAULT")
+;;;0;;	set default @srcdir_dev@[@srcdir_dir@.MAN]
+;;;0;;	$(MAKE) $(MMSQUALIFIERS) dvi
+;;;0;;	set default 'a'
+
+;;;1;;#### Bootstrapping.
+;;;1;;
+;;;1;;### This is meant for Emacs maintainers only.  It first cleans the
+;;;1;;### lisp subdirectory, removing all compiled Lisp files.  Then a
+;;;1;;### special emacs executable is built from Lisp sources, which is then
+;;;1;;### used to compile Lisp files.  The last step is a "normal" make.
+;;;1;;
+;;;1;;#- .PHONY: bootstrap
+;;;1;;#- .PHONY: maybe_bootstrap
+;;;1;;
+;;;1;;FRC.bootstrap :
+;;;1;;	@ !
+;;;1;;FRC.bootstrap-clean-before :
+;;;1;;	@ !
+;;;1;;
+;;;1;;bootstrap : bootstrap-clean-before info FRC.bootstrap
+;;;1;;	! (cd lisp; $(MAKE) $(MMSQUALIFIERS) bootstrap-clean)
+;;;1;;	set default [.src]
+;;;1;;	$(MAKE) $(MMSQUALIFIERS) bootstrap
+;;;1;;	directory/date/size/width=(filename=25) bootstrap-emacs.*
+;;;1;;	buildsrcdir = f$environment("DEFAULT")
+;;;1;;	set default [-]
+;;;1;;	a = f$environment("DEFAULT")
+;;;1;;	set default $(lispsrcdir)
+;;;1;;	mms/macro=("BUILDSRCDIR='buildsrcdir'") bootstrap
+;;;1;;	set default 'a'
+;;;1;;	! (cd src; $(MAKE) $(MMSQUALIFIERS) mostlyclean)
+;;;1;;	$(MAKE) $(MMSQUALIFIERS) all
+;;;1;;	! (cd lisp; $(MAKE) $(MMSQUALIFIERS) bootstrap-after)
+;;;1;;
+;;;1;;bootstrap-clean-before :
+;;;1;;	@ ! do nothing for now --ttn
+;;;1;;
+;;;1;;### Used for `bootstrap' to avoid deleting existing dumped Emacs executables.
+;;;1;;ORIG-bootstrap-clean-before : FRC.bootstrap-clean-before
+;;;1;;	(cd src;      $(MAKE) $(MMSQUALIFIERS) mostlyclean)
+;;;1;;	(cd oldXMenu; $(MAKE) $(MMSQUALIFIERS) clean)
+;;;1;;	(cd lwlib;    $(MAKE) $(MMSQUALIFIERS) clean)
+;;;1;;	(cd lib-src;  $(MAKE) $(MMSQUALIFIERS) clean)
+;;;1;;	-(cd man &&   $(MAKE) $(MMSQUALIFIERS) clean)
+;;;1;;	-(cd lispref &&   $(MAKE) $(MMSQUALIFIERS) clean)
+;;;1;;	-(cd lispintro &&   $(MAKE) $(MMSQUALIFIERS) clean)
+;;;1;;	(cd leim;     $(MAKE) $(MMSQUALIFIERS) clean)
+
+;;; Makefile.in-2mms ends here

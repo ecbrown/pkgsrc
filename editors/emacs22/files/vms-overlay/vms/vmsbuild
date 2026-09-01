@@ -1,0 +1,52 @@
+How to Compile, Link and Build GNU Emacs under VMS
+==================================================
+
+A runnable Emacs on VMS consists of two files, an exe file and a map
+file.  (It also refers to a DOC file in the [-.etc] sibling directory.
+These files are made automatically and kept straight by Emacs version
+number.)
+
+For an Emacs being built and tested, these files are `temacs.exe' and
+`temacs.dump' in the [.vms] subdiredtory or the directory you use to
+build emacs.
+
+For an installed Emacs, these files are `emacs.exe' and `emacs.dump'
+in the binaries directory.  These names are known only in the file
+`emacs_startup.com' or `gnu_startup.com', which are instaled in the
+startup directory.
+
+1.  Run configure.com
+    In the root of the source directory, you'll find configure.com, which
+    helps you configure the whole Emacs compilation process.  Just move
+    to the directory where you want the object files to reside and type:
+
+	@srcdev:[srcdir]CONFIGURE
+
+    The result will be that Emacs will be installed in the directory tree
+    starting with SYS$SYSDEVICE:[GNU], which is the only place you can
+    be sure there is a disk, on any VMS system.
+
+    You might want to install Emacs in some other place than
+    SYS$SYSDEVICE:[GNU...].  CONFIGURE has a lot of switches with which
+    may help you can change the directory names which are used.  type
+    @CONFIGURE --HELP for more info, or read [.VMS]CONFIGURE.VMS_DOC.
+
+2.  Compile, link and build Emacs.
+    Now, you may compile Emacs with MMS (the make utility that Digtal
+    distributes), or with MMK (Matt Madisons MMS clone):
+
+	MMS/IGNORE=WARNING
+
+3.  Test Emacs before installation.
+    If you want to test Emacs before you install it, do this:
+
+	@[.vms]testemacs.com
+
+    This defines the `runtemacs' command to run `temacs.exe' with its map
+    file `temacs.dump'.  This step is optional, and allows you to test
+    whether or not emacs is running.
+
+4.  Install Emacs.
+    To install Emacs, just use MMS (or MMK) again, like this:
+
+	MMS/IGNORE=WARNING INSTALL
