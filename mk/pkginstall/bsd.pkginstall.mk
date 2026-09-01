@@ -83,7 +83,13 @@ PKG_DB_TMPDIR?=		${WRKDIR}/.pkgdb
 # point to additional script fragments.  These bits are included after
 # the main install/deinstall script fragments.
 #
+# On OpenVMS, .CURDIR can be rendered as a physical DISK$ logical name.
+# Passing that spelling through GNV submakes lets the shell consume "$P".
+.if ${OPSYS} == "OpenVMS"
+_HEADER_TMPL?=		${PKGSRCDIR}/mk/pkginstall/header
+.else
 _HEADER_TMPL?=		${.CURDIR}/../../mk/pkginstall/header
+.endif
 HEADER_TEMPLATES?=	# empty
 .if exists(${PKGDIR}/HEADER) && \
     empty(HEADER_TEMPLATES:M${PKGDIR}/HEADER)
@@ -94,16 +100,28 @@ DEINSTALL_TEMPLATES?=	# empty
     empty(DEINSTALL_TEMPLATES:M${PKGDIR}/DEINSTALL)
 DEINSTALL_TEMPLATES+=	${PKGDIR}/DEINSTALL
 .endif
+.if ${OPSYS} == "OpenVMS"
+_DEINSTALL_TMPL?=	${PKGSRCDIR}/mk/pkginstall/deinstall
+.else
 _DEINSTALL_TMPL?=	${.CURDIR}/../../mk/pkginstall/deinstall
+.endif
 _INSTALL_UNPACK_TMPL?=	# empty
+.if ${OPSYS} == "OpenVMS"
+_INSTALL_TMPL?=		${PKGSRCDIR}/mk/pkginstall/install
+.else
 _INSTALL_TMPL?=		${.CURDIR}/../../mk/pkginstall/install
+.endif
 INSTALL_TEMPLATES?=	# empty
 .if exists(${PKGDIR}/INSTALL) && \
     empty(INSTALL_TEMPLATES:M${PKGDIR}/INSTALL)
 INSTALL_TEMPLATES+=	${PKGDIR}/INSTALL
 .endif
 _INSTALL_DATA_TMPL?=	# empty
+.if ${OPSYS} == "OpenVMS"
+_FOOTER_TMPL?=		${PKGSRCDIR}/mk/pkginstall/footer
+.else
 _FOOTER_TMPL?=		${.CURDIR}/../../mk/pkginstall/footer
+.endif
 
 # _DEINSTALL_TEMPLATES and _INSTALL_TEMPLATES are the list of source
 #	files that are concatenated to form the DEINSTALL/INSTALL
