@@ -68,6 +68,9 @@ PERL5_VMS_NATIVE?=	/PERL_ROOT/000000/PERL.EXE
 PERL5_VMS_PREFIX_CMD=	${PERL5_VMS_NATIVE:Q} -MVMS::Filespec -e \
 		'print VMS::Filespec::vmspath("${DESTDIR}${PREFIX}")'
 PERL5_VMS_PREFIX=	${PERL5_VMS_PREFIX_CMD:sh}
+# -O is required because Configure.com otherwise keeps the config.sh default
+# (perl_root) even when a -Dprefix override is supplied.
+CONFIGURE_ARGS.OpenVMS+=	-O
 CONFIGURE_ARGS.OpenVMS+=	-Dprefix=${PERL5_VMS_PREFIX}
 
 do-configure:
