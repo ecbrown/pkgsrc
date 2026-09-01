@@ -18,7 +18,25 @@ dependencies and keep recursive Makefile commands relative to PERL_SRC.
      return 1;
  }
  
-@@ -4031,6 +4037,28 @@ sub top_targets {
+@@ -3952,8 +3958,16 @@ sub tool_xsubpp {
+     # because ExtUtils::ParseXS::process_file chdir's to .xs file's
+     # location. This is the only way to get all specified typemaps used,
+     # wherever located.
+-    my @tmargs = map { '-typemap '.$self->quote_literal(File::Spec->rel2abs($_)) } @tmdeps;
++    my @tmargs;
++    for my $i (0 .. $#tmdeps) {
++        if ($Is{VMS} && $i == 0) {
++            push @tmargs, '-typemap "$(XSUBPPDIR)typemap"';
++        }
++        else {
++            push @tmargs, '-typemap '.$self->quote_literal(File::Spec->rel2abs($tmdeps[$i]));
++        }
++    }
+     $_ = $self->quote_dep($_) for @tmdeps;
+     if( exists $self->{XSOPT} ){
+         unshift( @tmargs, $self->{XSOPT} );
+     }
+@@ -4031,6 +4044,28 @@ sub top_targets {
  $(O_FILES) : $(H_FILES)
  ' if @{$self->{O_FILES} || []} && @{$self->{H} || []};
  

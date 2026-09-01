@@ -10,7 +10,7 @@ Add the missing VMS MMS action for the generated RealPPPort object.
  POSTAMBLE
 +  if ($^O eq 'VMS') {
 +    $post .= "\nRealPPPort.obj : RealPPPort.c\n";
-+    $post .= "\t\\\$(CCCMD) \\\$(CCCDLFLAGS) RealPPPort.c /OBJECT=RealPPPort.obj\n";
++    $post .= "\t\$(CCCMD) \$(CCCDLFLAGS) RealPPPort.c /OBJECT=RealPPPort.obj\n";
 +  }
    return $post;
  }
