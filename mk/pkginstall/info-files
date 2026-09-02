@@ -30,13 +30,10 @@ UNPACK,|UNPACK,+INFO_FILES)
 #
 
 GREP="@GREP@"
-INSTALL_INFO="@INSTALL_INFO@"
 MKDIR="@MKDIR@"
 PWD_CMD="@PWD_CMD@"
 RM="@RM@"
 RMDIR="@RMDIR@"
-SED="@SED@"
-SORT="@SORT@"
 TEST="@TEST@"
 
 SELF=$0
@@ -47,66 +44,154 @@ PKG_METADATA_DIR="${2-${CURDIR}}"
 : ${PKGNAME=${PKG_METADATA_DIR##*/}}
 : ${PKG_PREFIX=@PREFIX@}
 
-exitcode=0
+# Binary packages may be installed at a prefix other than the one where they
+# were built.  Relocate install-info with the package when its configured path
+# was below that build prefix.
+INSTALL_INFO="@INSTALL_INFO@"
+install_info_build_prefix="@PREFIX@"
+case "${INSTALL_INFO}" in
+"${install_info_build_prefix}"/*)
+	install_info_relocated="${PKG_PREFIX}${INSTALL_INFO#"${install_info_build_prefix}"}"
+	if [ "${PKG_PREFIX}" != "${install_info_build_prefix}" ]; then
+		INSTALL_INFO="${install_info_relocated}"
+		# Never fall back to a tool under the build machine's prefix.
+		# VMS executables installed by pkgsrc carry execute permission too.
+		${TEST} -x "${INSTALL_INFO}" || exit 1
+	fi
+	;;
+esac
+
+remove_infoindex()
+{
+	# A versionless remove exposes the next older file version on VMS.
+	# Keep removing while the index is visible so stale entries cannot return.
+	while ${TEST} -f "$1"; do
+		${RM} "$1" || return 1
+	done
+}
+
+# Keep the direct, checked metadata reader while retaining the old sort -u
+# behavior.  Package metadata paths cannot contain whitespace, so a normalized
+# one- or two-field record cannot contain the literal newline delimiter.
+info_newline='
+'
+seen_info_records=${info_newline}
+
 case $ACTION in
 ADD)
-	${SED} -n "/^\# INFO: /{s/^\# INFO: //;p;}" ${SELF} | ${SORT} -u |
-	while read file infodir; do
+	# Read records directly so a failed sed/sort pipeline cannot be mistaken
+	# for a successful empty list.  Package metadata paths cannot contain
+	# whitespace; disable glob expansion before splitting each record.
+	set -f
+	while IFS= read -r info_line; do
+		case "${info_line}" in
+		"# INFO: "*)	info_record=${info_line#"# INFO: "} ;;
+		*)		continue ;;
+		esac
+		set -- ${info_record}
+		case $# in
+		1)	info_key="1 $1" ;;
+		2)	info_key="2 $1 $2" ;;
+		*)	echo "${PKGNAME}: malformed INFO record: ${info_line}" >&2
+			exit 1 ;;
+		esac
+		case "${seen_info_records}" in
+		*"${info_newline}${info_key}${info_newline}"*) continue ;;
+		esac
+		seen_info_records="${seen_info_records}${info_key}${info_newline}"
+		file=$1
+		infodir=${2-}
 		case $file in
 		"")	continue ;;
 		[!/]*)	file="${PKG_PREFIX}/$file" ;;
 		esac
 
 		if ${TEST} ! -f "$file"; then
-			:
+			echo "${PKGNAME}: cannot register missing info file: $file" >&2
+			exit 1
 		else
 			case $infodir in
 			"")	infodir="${file%/*}" ;;
 			[!/]*)	infodir="${PKG_PREFIX}/$infodir" ;;
 			esac
 			infoindex="$infodir/dir"
-			nentries="`${GREP} -c '^\*' $infoindex 2>/dev/null`"
-			case "$nentries" in
-			[0-9]*)	${TEST} $nentries -gt 0 || ${RM} $infoindex ;;
-			esac
-			${MKDIR} -p "$infodir"
-			${INSTALL_INFO} --info-dir="$infodir" --delete $file >/dev/null 2>&1
-			${INSTALL_INFO} --info-dir="$infodir" $file >/dev/null 2>&1
+			if ${TEST} -f "$infoindex"; then
+				nentries=`${GREP} -c '^\*' "$infoindex" 2>/dev/null`
+				grep_status=$?
+				case "$grep_status" in
+				0|1)	;;
+				*)	exit 1 ;;
+				esac
+				case "$nentries" in
+				[0-9]*)	${TEST} "$nentries" -gt 0 ||
+						remove_infoindex "$infoindex" || exit 1 ;;
+				esac
+			fi
+			${MKDIR} -p "$infodir" || exit 1
+			# install-info removes this file's old menu entries and writes
+			# their replacements in one index update.  A separate delete
+			# would lose a valid entry if the following add failed.
+			"${INSTALL_INFO}" --info-dir="$infodir" "$file" \
+				>/dev/null 2>&1 || exit 1
 		fi
-	done
+	done < "${SELF}"
 	;;
 
 REMOVE)
-	${SED} -n "/^\# INFO: /{s/^\# INFO: //;p;}" ${SELF} | ${SORT} -u |
-	while read file infodir; do
+	set -f
+	while IFS= read -r info_line; do
+		case "${info_line}" in
+		"# INFO: "*)	info_record=${info_line#"# INFO: "} ;;
+		*)		continue ;;
+		esac
+		set -- ${info_record}
+		case $# in
+		1)	info_key="1 $1" ;;
+		2)	info_key="2 $1 $2" ;;
+		*)	echo "${PKGNAME}: malformed INFO record: ${info_line}" >&2
+			exit 1 ;;
+		esac
+		case "${seen_info_records}" in
+		*"${info_newline}${info_key}${info_newline}"*) continue ;;
+		esac
+		seen_info_records="${seen_info_records}${info_key}${info_newline}"
+		file=$1
+		infodir=${2-}
 		case $file in
 		"")	continue ;;
 		[!/]*)	file="${PKG_PREFIX}/$file" ;;
 		esac
 
-		if ${TEST} ! -f "$file"; then
-			:
-		else
-			case $infodir in
-			"")	infodir="${file%/*}" ;;
-			[!/]*)	infodir="${PKG_PREFIX}/$infodir" ;;
+		# --delete derives the menu key from the payload basename and does
+		# not read the payload.  Unregister it even after the payload has
+		# already disappeared.
+		case $infodir in
+		"")	infodir="${file%/*}" ;;
+		[!/]*)	infodir="${PKG_PREFIX}/$infodir" ;;
+		esac
+		infoindex="$infodir/dir"
+		if ${TEST} -f "$infoindex"; then
+			"${INSTALL_INFO}" --info-dir="$infodir" --delete "$file" \
+				>/dev/null 2>&1 || exit 1
+			nentries=`${GREP} -c '^\*' "$infoindex" 2>/dev/null`
+			grep_status=$?
+			case "$grep_status" in
+			0|1)	;;
+			*)	exit 1 ;;
 			esac
-			infoindex="$infodir/dir"
-			${INSTALL_INFO} --info-dir="$infodir" --delete $file >/dev/null 2>&1
-			nentries="`${GREP} -c '^\*' $infoindex 2>/dev/null`"
 			case "$nentries" in
-			[0-9]*)	${TEST} $nentries -gt 1 || ${RM} $infoindex ;;
+			[0-9]*)	${TEST} "$nentries" -gt 1 ||
+					remove_infoindex "$infoindex" || exit 1 ;;
 			esac
-			${RMDIR} -p "$infodir" 2>/dev/null || ${TRUE}
 		fi
-	done
+		${RMDIR} -p "$infodir" 2>/dev/null || :
+	done < "${SELF}"
 	;;
 esac
-exit $exitcode
+exit 0
 
 EOF
-	${SED} -n "/^\# INFO: /p" ${SELF} >> ./+INFO_FILES
+	${SED} -n "/^\# INFO: /p" "${SELF}" >> ./+INFO_FILES
 	${CHMOD} +x ./+INFO_FILES
 	;;
 esac
-

@@ -779,9 +779,9 @@ OpenVMS)
 	machine_arch=`uname -p`
 	groupsprog="id -gn"
 	whoamiprog="id -un"
-	bootstrap_sh=/bin/bash
+	bootstrap_sh=/bin/bash.exe
 	bootstrap_sh_set=set
-	shprog=/bin/bash
+	shprog=/bin/bash.exe
 	bmakexargs="$bmakexargs --with-meta=no"
 	# GNV implements exec by spawning and waiting, so Autoconf's shell
 	# re-exec path eventually returns and reports a false fatal error.

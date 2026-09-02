@@ -31,8 +31,17 @@
 #
 # $NetBSD: header,v 1.7 2017/08/19 00:29:45 jlam Exp $
 
-# Package task loader.
-: ${TASK_MODULE_DIR:=@LOCALBASE@/share/pkgtasks-1}
+# Package task loader.  Most packages use LOCALBASE, including packages whose
+# own PREFIX is "/".  A relocated binary package instead uses the task module
+# dependency below its new PKG_PREFIX when that module is present.
+: ${PKG_PREFIX:=@PREFIX@}
+if [ -z "${TASK_MODULE_DIR}" ]; then
+	TASK_MODULE_DIR="@LOCALBASE@/share/pkgtasks-1"
+	if [ "${PKG_PREFIX}" != "@PREFIX@" ] &&
+	    [ -f "${PKG_PREFIX}/share/pkgtasks-1/load.subr" ]; then
+		TASK_MODULE_DIR="${PKG_PREFIX}/share/pkgtasks-1"
+	fi
+fi
 . "${TASK_MODULE_DIR}/load.subr"
 
 SELF="$0"
@@ -72,6 +81,16 @@ GTK3_UPDATE_ICON_CACHE="@GTK3_UPDATE_ICON_CACHE@"
 FIND="@FIND@"
 ID="@ID@"
 INSTALL_INFO="@INSTALL_INFO@"
+install_info_build_prefix="@PREFIX@"
+case "${INSTALL_INFO}" in
+"${install_info_build_prefix}"/*)
+	install_info_relocated="${PKG_PREFIX}${INSTALL_INFO#"${install_info_build_prefix}"}"
+	if [ "${PKG_PREFIX}" != "${install_info_build_prefix}" ] &&
+	    [ -f "${install_info_relocated}" ]; then
+		INSTALL_INFO="${install_info_relocated}"
+	fi
+	;;
+esac
 LDCONFIG="@LDCONFIG@"
 LN="@LN@"
 LS="@LS@"

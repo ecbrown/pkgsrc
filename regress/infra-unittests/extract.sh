@@ -96,6 +96,39 @@ if test_case_begin "exclude asterisk"; then
 	test_case_end
 fi
 
+if test_case_begin "tar executable suffix"; then
+
+	# OpenVMS tools retain their .exe suffix in POSIX pathnames.
+	tar_exe=$(mock_cmd tar.exe \
+		--when-args '-xf -' --then-exit 0)
+	: > "$tmpdir/archive.tar"
+
+	if sh "$pkgsrcdir/mk/extract/extract" \
+	    -t "$tar_exe" "$tmpdir/archive.tar"; then
+		assert_succeed
+	else
+		assert_fail 'tar.exe was not recognized as a tar program\n'
+	fi
+
+	test_case_end
+fi
+
+if test_case_begin "pax executable suffix"; then
+
+	pax_exe=$(mock_cmd pax.EXE \
+		--when-args '-O -r' --then-exit 0)
+	: > "$tmpdir/archive.tar"
+
+	if sh "$pkgsrcdir/mk/extract/extract" \
+	    -t "$pax_exe" "$tmpdir/archive.tar"; then
+		assert_succeed
+	else
+		assert_fail 'pax.EXE was not recognized as a pax program\n'
+	fi
+
+	test_case_end
+fi
+
 # TODO: test -x on an archiver that doesn't support it.
 
 # TODO: add test for extracting only a few files.

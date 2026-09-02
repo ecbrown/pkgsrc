@@ -152,9 +152,12 @@ while ${TEST} $# -gt 0; do
 done
 
 case "$extract_using" in
-/*tar|/*pax)	tarprog="$extract_using" ;;
-*tar)		tarprog="${TAR}" ;;
-*pax)		tarprog="${PAX}" ;;
+/*tar|/*tar.[eE][xX][eE]|/*pax|/*pax.[eE][xX][eE])
+		tarprog="$extract_using" ;;
+*tar|*tar.[eE][xX][eE])
+		tarprog="${TAR}" ;;
+*pax|*pax.[eE][xX][eE])
+		tarprog="${PAX}" ;;
 *)		tarprog="${TAR}" ;;
 esac
 
@@ -243,7 +246,7 @@ cd "$extract_dir"
 case "$format" in
 tar)
 	case "$extract_using" in
-	*pax)
+	*pax|*pax.[eE][xX][eE])
 		: ${EXTRACT_OPTS_PAX=}
 		case "$extract_using" in
 		/*)	paxprog="$extract_using" ;;
@@ -257,7 +260,7 @@ tar)
 		$decompress_cat "$distfile" |
 			$paxprog ${EXTRACT_OPTS_PAX} $exclude_flag -O -r ${1+"$@"}
 		;;
-	*tar)
+	*tar|*tar.[eE][xX][eE])
 		: ${EXTRACT_OPTS_TAR=}
 		case "$extract_using" in
 		/*)	tarprog="$extract_using" ;;

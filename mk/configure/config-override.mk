@@ -17,9 +17,24 @@ OVERRIDE_DIRDEPTH.config-guess?=	${OVERRIDE_DIRDEPTH}
 OVERRIDE_DIRDEPTH.config-sub?=		${OVERRIDE_DIRDEPTH}
 
 .for _sub_ in guess sub
+.if ${OPSYS} == "OpenVMS"
+# An ODS-5 rm followed by ln can leave the replacement absent.  Rename a
+# same-directory copy over regular files; GNV mv requires symlinks unlinked.
+_SCRIPT.config-${_sub_}-override=                                  \
+	tmpfile="$$file.pkgsrc.$$$$";                               \
+	${CP} ${PKGSRCDIR}/mk/gnu-config/config.${_sub_} "$$tmpfile" \
+	|| { ${RM} -f "$$tmpfile"; exit 1; };                       \
+	if [ -h "$$file" ]; then                                    \
+		${RM} -f "$$file"                                        \
+		|| { ${RM} -f "$$tmpfile"; exit 1; };                    \
+	fi;                                                          \
+	${MV} -f "$$tmpfile" "$$file"                              \
+	|| { ${RM} -f "$$tmpfile"; exit 1; }
+.else
 _SCRIPT.config-${_sub_}-override=					\
 	${RM} -f $$file;						\
 	${LN} -fs ${PKGSRCDIR}/mk/gnu-config/config.${_sub_} $$file
+.endif
 
 .PHONY: config-${_sub_}-override
 config-${_sub_}-override:

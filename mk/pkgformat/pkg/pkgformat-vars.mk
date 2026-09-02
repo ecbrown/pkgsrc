@@ -56,6 +56,8 @@ NATIVE_LINKFARM_CMD?=		${NATIVE_PKG_TOOLS_BIN}/linkfarm
 # Latest versions of tools required for correct pkgsrc operation.
 .if ${USE_CROSS_COMPILE:tl} == "yes"
 PKGTOOLS_REQD=		20240126
+.elif ${OPSYS} == "OpenVMS"
+PKGTOOLS_REQD=		20260902
 .elif !empty(USE_PKG_ADMIN_DIGEST:M[Yy][Ee][Ss])
 PKGTOOLS_REQD=		20191008
 .else

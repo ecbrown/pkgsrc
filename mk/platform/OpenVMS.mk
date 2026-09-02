@@ -171,7 +171,3 @@ CONFIGURE_ENV+=		gl_cv_next_wctype_h=wctype
 
 # Avoid an expensive or unreliable command-line length probe through DCL.
 _OPSYS_MAX_CMDLEN_CMD=	${ECHO} 4096
-
-# gzip is not part of the base GNV x86-64 kit, and libarchive's fallback
-# filter is not reliable for larger archives on OpenVMS.
-PKG_COMPRESSION=	none

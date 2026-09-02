@@ -336,6 +336,32 @@ ${_PRESERVE_FILE}:
 _SIZE_PKG_FILE=		${PKG_DB_TMPDIR}/+SIZE_PKG
 _METADATA_TARGETS+=	${_SIZE_PKG_FILE}
 
+.if ${OPSYS} == "OpenVMS"
+# GNV findutils 4.4.2 xargs reads only the first RMS pipe record, and its
+# inherited pkgsrc environment can leave too little exec space for even that
+# partial argument list.  Batch the paths in a clean child shell instead.
+${_SIZE_PKG_FILE}: ${PLIST}
+	${RUN}								\
+	${TEST} -d ${.TARGET:H} || ${MKDIR} ${.TARGET:H};		\
+	${AWK} 'BEGIN { base = "${PREFIX}/" }				\
+		/^@cwd/ { base = $$2 "/" }				\
+		/^@/ { next }						\
+		{ print base $$0 }' ${PLIST} |				\
+	${SORT} -u |							\
+	${SED} -e "s,^/,${DESTDIR}/," |				\
+	${SETENV} -i ${SH} -c '					\
+		set --;						\
+		while IFS= read -r file; do				\
+			set -- "$$@" "$$file";				\
+			if ${TEST} "$$#" -ge 16; then			\
+				${LS} -ld "$$@";			\
+				set --;					\
+			fi;						\
+		done;							\
+		${TEST} "$$#" -eq 0 || ${LS} -ld "$$@"' 2>/dev/null |	\
+	${AWK} 'BEGIN { s = 0 } { s += $$5 } END { print s }'		\
+		> ${.TARGET}
+.else
 ${_SIZE_PKG_FILE}: ${PLIST}
 	${RUN}								\
 	${TEST} -d ${.TARGET:H} || ${MKDIR} ${.TARGET:H};		\
@@ -348,6 +374,7 @@ ${_SIZE_PKG_FILE}: ${PLIST}
 	${XARGS} -n 256 ${LS} -ld 2>/dev/null |				\
 	${AWK} 'BEGIN { s = 0 } { s += $$5 } END { print s }'		\
 		> ${.TARGET}
+.endif
 
 ######################################################################
 ###
@@ -359,26 +386,32 @@ ${_SIZE_PKG_FILE}: ${PLIST}
 _SIZE_ALL_FILE=		${PKG_DB_TMPDIR}/+SIZE_ALL
 _METADATA_TARGETS+=	${_SIZE_ALL_FILE}
 
-# The GNU xargs shipped with GNV runs its command once for empty input unless
-# -r is supplied.  A VMS package with no run-time dependencies therefore
-# would otherwise invoke pkg_info without a package name and fail metadata
-# generation.
 .if ${OPSYS} == "OpenVMS"
-_SIZE_ALL_XARGS_FLAGS=	-r -n 256
-.else
-_SIZE_ALL_XARGS_FLAGS=	-n 256
-.endif
-
 ${_SIZE_ALL_FILE}: ${_RDEPENDS_FILE} ${_SIZE_PKG_FILE}
 	${RUN}								\
 	${TEST} -d ${.TARGET:H} || ${MKDIR} ${.TARGET:H};		\
 	{								\
 		${CAT} ${_SIZE_PKG_FILE} &&				\
 		${_FULL_DEPENDS_CMD} | ${SORT} -u |			\
-		${XARGS} ${_SIZE_ALL_XARGS_FLAGS} ${PKG_INFO} -qs;		\
+		${SETENV} -i ${SH} -c '				\
+			while IFS= read -r package; do			\
+				${PKG_INFO} -qs "$$package";		\
+			done';						\
 	} |								\
 	${AWK} 'BEGIN { s = 0 } /^[0-9]+$$/ { s += $$1 } END { print s }' \
 		> ${.TARGET}
+.else
+${_SIZE_ALL_FILE}: ${_RDEPENDS_FILE} ${_SIZE_PKG_FILE}
+	${RUN}								\
+	${TEST} -d ${.TARGET:H} || ${MKDIR} ${.TARGET:H};		\
+	{								\
+		${CAT} ${_SIZE_PKG_FILE} &&				\
+		${_FULL_DEPENDS_CMD} | ${SORT} -u |			\
+		${XARGS} -n 256 ${PKG_INFO} -qs;				\
+	} |								\
+	${AWK} 'BEGIN { s = 0 } /^[0-9]+$$/ { s += $$1 } END { print s }' \
+		> ${.TARGET}
+.endif
 
 ######################################################################
 ###

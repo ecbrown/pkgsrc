@@ -868,12 +868,12 @@ FETCH_USING=	fetch
 
 .if !defined(_PKGSRCDIR)
 .  if ${OPSYS} == "OpenVMS"
-# GNV reports the current directory with its OpenVMS device name (for
-# example, /DISK$PKGSRC).  The '$' is meaningful to bmake, so converting the
-# path through pwd would turn it into /DISKKGSRC while the makefiles are
-# parsed.  .CURDIR is the POSIX spelling supplied by bmake -C and is safe to
-# carry into recursive makes.
-_PKGSRCDIR=		${_PKGSRC_TOPDIR}
+# Preserve the logical POSIX device spelling while removing lexical ../
+# components.  Those components are harmless to the shell but GNV bmake can
+# fail to reopen phase-cache files through them after a recursive barrier.
+# readlink -f retains /PKGSRC_DATA here, unlike pwd on a physical VMS device
+# whose '$' would be consumed as a make variable.
+_PKGSRCDIR!=		${TOOLS_PLATFORM.readlink} -f ${_PKGSRC_TOPDIR:Q}
 .  else
 _PKGSRCDIR!=		cd ${_PKGSRC_TOPDIR} && ${PWD_CMD}
 .  endif
@@ -902,9 +902,10 @@ _BUILTIN_PKGS?=		# empty
 BUILD_DIR?=		${WRKOBJDIR}/${PKGPATH}
 .else
 .  if ${OPSYS} == "OpenVMS"
-# As above, retain bmake's POSIX spelling instead of asking GNV pwd for a
-# device-qualified path containing '$'.
-BUILD_DIR=		${_PKGSRC_TOPDIR}/${PKGPATH}
+# Use the canonical logical root propagated to recursive makes.  In
+# particular, phase-cache target names must not capture _PKGSRC_TOPDIR's
+# initial ${.CURDIR}/../.. spelling before a package can override WRKDIR.
+BUILD_DIR=		${PKGSRCDIR}/${PKGPATH}
 .  else
 BUILD_DIR!=		cd ${.CURDIR} && ${PWD_CMD}
 .  endif

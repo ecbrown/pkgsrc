@@ -202,6 +202,7 @@ PLIST_SUBST+=	${PLIST.${_var_}:DPLIST.${_var_}=:UPLIST.${_var_}="@comment "}
 #
 _PLIST_AWK_ENV+=	${PLIST_SUBST:S/^/PLIST_/}
 _PLIST_AWK_ENV+=	PLIST_SUBST_VARS=${PLIST_SUBST:S/^/PLIST_/:C/=.*//:M*:Q}
+_PLIST_AWK_ENV+=	PLIST_TYPE=${PLIST_TYPE:Q}
 
 _PLIST_1_AWK+=		-f ${PKGSRCDIR}/mk/plist/plist-functions.awk
 _PLIST_1_AWK+=		-f ${PKGSRCDIR}/mk/plist/plist-subst.awk

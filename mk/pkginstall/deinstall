@@ -11,8 +11,14 @@ DEINSTALL)
 	#
 	# Unregister info files.
 	#
-	${TEST} ! -x ./+INFO_FILES ||
-		./+INFO_FILES REMOVE ${PKG_METADATA_DIR}
+	if ${TEST} "${PKGSRC_INFO_FILES_DONE:-no}" != yes; then
+		${TEST} ! -x ./+INFO_FILES ||
+			./+INFO_FILES REMOVE ${PKG_METADATA_DIR} || {
+				info_status=$?
+				./+INFO_FILES ADD ${PKG_METADATA_DIR} >/dev/null 2>&1 || :
+				exit ${info_status}
+			}
+	fi
 	#
 	# Remove any icon theme caches.
 	#
@@ -67,4 +73,3 @@ POST-DEINSTALL)
 		./+DIRS CHECK-REMOVE ${PKG_METADATA_DIR}
 	;;
 esac
-

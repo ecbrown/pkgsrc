@@ -75,7 +75,13 @@ POST-INSTALL)
 	# Register info files.
 	#
 	${TEST} ! -x ./+INFO_FILES ||
-		./+INFO_FILES ADD ${PKG_METADATA_DIR}
+		./+INFO_FILES ADD ${PKG_METADATA_DIR} || {
+			info_status=$?
+			./+INFO_FILES REMOVE ${PKG_METADATA_DIR} >/dev/null 2>&1 || :
+			${TEST} ! -x ./+DIRS ||
+				./+DIRS REMOVE ${PKG_METADATA_DIR} >/dev/null 2>&1 || :
+			exit ${info_status}
+		}
 
   #
   # Register package into ocaml-findlib.
@@ -84,4 +90,3 @@ POST-INSTALL)
     ./+OCAML_FINDLIB_REGISTER ADD ${PKG_METADATA_DIR}
 	;;
 esac
-

@@ -53,6 +53,8 @@ BEGIN {
 	PKGINFODIR = ENVIRON["PKGINFODIR"] ? ENVIRON["PKGINFODIR"] : "info"
 	LS = ENVIRON["LS"] ? ENVIRON["LS"] : "ls"
 	MANZ = ENVIRON["MANZ"] ? ENVIRON["MANZ"] : "no"
+	PLIST_OPSYS = ENVIRON["PLIST_OPSYS"] ? ENVIRON["PLIST_OPSYS"] : ""
+	PLIST_TYPE = ENVIRON["PLIST_TYPE"] ? ENVIRON["PLIST_TYPE"] : ""
 	PREFIX = ENVIRON["PREFIX"] ? ENVIRON["PREFIX"] : "/usr/pkg"
 	TEST = ENVIRON["TEST"] ? ENVIRON["TEST"] : "test"
 
@@ -61,6 +63,13 @@ BEGIN {
 		gsub(":", "|", IGNORE_INFO_REGEXP)
 		IGNORE_INFO_REGEXP = "(" IGNORE_INFO_REGEXP ")"
 	}
+}
+
+# Preserve the entry before this script canonicalizes its directory or strips
+# a compression suffix.  Dynamic OpenVMS PLISTs already enumerate every file,
+# so they do not need the POSIX shell-based split-file discovery below.
+{
+	plist_info_entry = $0
 }
 
 ###
@@ -85,6 +94,12 @@ BEGIN {
 ###
 /^[^@]/ && ($0 !~ "^" IGNORE_INFO_REGEXP "/") && \
 /^([^\/]*\/)*(info\/[^\/]+(\.info)?|[^\/]+\.info)-[0-9]+$/ {
+	# GNV awk passes system() commands to DCL, which cannot execute the
+	# POSIX test/cd/ls pipeline below.  A dynamic PLIST already enumerates
+	# its split files, so retain the original entry directly.
+	if (PLIST_OPSYS == "OpenVMS" && PLIST_TYPE == "dynamic") {
+		print_entry(plist_info_entry)
+	}
 	next
 }
 
@@ -94,6 +109,10 @@ BEGIN {
 ###
 /^[^@]/ && ($0 !~ "^" IGNORE_INFO_REGEXP "/") && \
 /^([^\/]*\/)*(info\/[^\/]+(\.info)?|[^\/]+\.info)$/ {
+	if (PLIST_OPSYS == "OpenVMS" && PLIST_TYPE == "dynamic") {
+		print_entry(plist_info_entry)
+		next
+	}
 	sub("^info/", PKGINFODIR "/")
 	cmd = TEST " -f " PREFIX "/" $0 " -o -f " PREFIX "/" $0 ".gz"
 	if (system(cmd) == 0) {

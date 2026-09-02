@@ -86,9 +86,10 @@ barrier: ${_BARRIER_PRE_TARGETS} ${_COOKIE.barrier}
 .if ${OPSYS} == "OpenVMS"
 # GNV reports .CURDIR with a physical device such as /DISK$PKGSRC.  The '$'
 # is consumed as a make variable when the barrier shell command is expanded,
-# yielding the unusable /DISKKGSRC spelling.  BUILD_DIR retains the logical
-# POSIX path propagated by bsd.prefs.mk.
-_BARRIER_CMD_CWD=	${BUILD_DIR}
+# yielding the unusable /DISKKGSRC spelling.  Re-enter through the logical
+# pkgsrc source path; BUILD_DIR instead names the empty object mirror when a
+# caller sets WRKOBJDIR.
+_BARRIER_CMD_CWD=	${PKGSRCDIR}/${PKGPATH}
 # DESTDIR is a command-line override in staged VMS builds.  bmake does not
 # include command-line overrides in MAKEFLAGS on this platform, so carry it
 # explicitly through the recursive barrier invocation.
