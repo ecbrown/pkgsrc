@@ -20,6 +20,11 @@
 
 #include "system.h"
 #include <getopt.h>
+#if defined (VMS) || defined (__VMS)
+#include <fcntl.h>
+#include <rms.h>
+#include <unixio.h>
+#endif
 
 static char *progname = "install-info";
 
@@ -435,7 +440,6 @@ ensure_dirfile_exists (dirfile)
     {
       FILE *f;
       char *readerr = strerror (errno);
-      close (desc);
       f = fopen (dirfile, "w");
       if (f)
         {
@@ -469,8 +473,10 @@ The first time you invoke Info you start off looking at this node.\n\
           xexit (1);
         }
     }
-  else
+  else if (desc >= 0)
     close (desc); /* It already existed, so fine.  */
+  else
+    pfatal_with_name (dirfile);
 }
 
 /* Open FILENAME and return the resulting stream pointer.  If it doesn't
@@ -552,6 +558,12 @@ open_possibly_compressed_file (filename, create_callback,
   nread = fread (data, sizeof (data), 1, f);
   if (nread != 1)
     {
+      if (ferror (f))
+        {
+          if (errno == 0)
+            errno = EIO;
+          pfatal_with_name (*opened_filename);
+        }
       /* Empty files don't set errno, so we get something like
          "install-info: No error for foo", which is confusing.  */
       if (nread == 0)
@@ -629,6 +641,7 @@ readfile (filename, sizep, create_callback,
      char **compression_program;
 {
   char *real_name;
+  char **selected_name;
   FILE *f;
   int pipe_p;
   int filled = 0;
@@ -636,18 +649,24 @@ readfile (filename, sizep, create_callback,
   char *data = xmalloc (data_size);
 
   /* If they passed the space for the file name to return, use it.  */
+  selected_name = opened_filename ? opened_filename : &real_name;
   f = open_possibly_compressed_file (filename, create_callback,
-                                     opened_filename ? opened_filename
-                                                     : &real_name,
+                                     selected_name,
                                      compression_program, &pipe_p);
 
   for (;;)
     {
-      int nread = fread (data + filled, 1, data_size - filled, f);
-      if (nread < 0)
-        pfatal_with_name (real_name);
+      size_t nread = fread (data + filled, 1, data_size - filled, f);
       if (nread == 0)
-        break;
+        {
+          if (ferror (f))
+            {
+              if (errno == 0)
+                errno = EIO;
+              pfatal_with_name (*selected_name);
+            }
+          break;
+        }
 
       filled += nread;
       if (filled == data_size)
@@ -663,9 +682,12 @@ readfile (filename, sizep, create_callback,
      by popen is simulated by a temporary file which only gets removed
      inside pclose.  */
   if (pipe_p)
-    pclose (f);
-  else
-    fclose (f);
+    {
+      if (pclose (f) != 0)
+        fatal (_("%s: decompressor failed"), *selected_name, 0);
+    }
+  else if (fclose (f) != 0)
+    pfatal_with_name (*selected_name);
 
   *sizep = filled;
   return data;
@@ -675,6 +697,52 @@ readfile (filename, sizep, create_callback,
    and/or new entries where appropriate.  If COMPRESSION_PROGRAM is not
    null, pipe to it to create DIRFILE.  Thus if we read dir.gz on input,
    we'll write dir.gz on output.  */
+
+#if defined (VMS) || defined (__VMS)
+static void
+purge_old_dirfile_versions (exact_name)
+     const char *exact_name;
+{
+  const char *version_delimiter;
+  char *end;
+  char *old_name;
+  long version;
+  long old_version;
+  size_t base_length;
+
+  version_delimiter = strrchr (exact_name, ';');
+  if (!version_delimiter || version_delimiter[1] == '\0')
+    {
+      errno = EINVAL;
+      pfatal_with_name (exact_name);
+    }
+  version = strtol (version_delimiter + 1, &end, 10);
+  if (*end != '\0' || version < 1 || version > 32767)
+    {
+      errno = EINVAL;
+      pfatal_with_name (exact_name);
+    }
+
+  base_length = version_delimiter - exact_name;
+  old_name = xmalloc (base_length + sizeof (";32767"));
+  memcpy (old_name, exact_name, base_length);
+  /* Package database operations serialize index updates.  Use exact numeric
+     versions so that an unexpected newer file is never selected for removal.  */
+  for (old_version = version - 1; old_version > 0; old_version--)
+    {
+      int saved_errno;
+
+      sprintf (old_name + base_length, ";%ld", old_version);
+      if (remove (old_name) == 0 || errno == ENOENT)
+        continue;
+      saved_errno = errno;
+      free (old_name);
+      errno = saved_errno;
+      pfatal_with_name (exact_name);
+    }
+  free (old_name);
+}
+#endif
 
 static void
 output_dirfile (dirfile, dir_nlines, dir_lines,
@@ -689,6 +757,9 @@ output_dirfile (dirfile, dir_nlines, dir_lines,
       char *compression_program;
 {
   int i;
+  int close_status;
+  int output_error;
+  int saved_errno;
   FILE *output;
 
   if (compression_program)
@@ -697,7 +768,22 @@ output_dirfile (dirfile, dir_nlines, dir_lines,
       output = popen (command, "w");
     }
   else
+#if defined (VMS) || defined (__VMS)
+    {
+      /* Opening an existing file with "w" creates a new version on VMS.
+         Update and truncate the version that we just read instead.  */
+      output = fopen (dirfile, "r+");
+      if (output && ftruncate (fileno (output), (off_t) 0) != 0)
+        {
+          int saved_errno = errno;
+          fclose (output);
+          errno = saved_errno;
+          output = NULL;
+        }
+    }
+#else
     output = fopen (dirfile, "w");
+#endif
 
   if (!output)
     {
@@ -805,11 +891,62 @@ output_dirfile (dirfile, dir_nlines, dir_lines,
 
   /* Some systems, such as MS-DOS, simulate pipes with temporary files.
      On those systems, the compressor actually gets run inside pclose,
-     so we must call pclose.  */
+     so we must call pclose.  All stdio writes above record failures in the
+     stream error indicator, which must be saved before either close.  */
+  output_error = ferror (output);
+  saved_errno = output_error ? (errno ? errno : EIO) : 0;
   if (compression_program)
-    pclose (output);
+    {
+      close_status = pclose (output);
+      if (output_error)
+        {
+          errno = saved_errno;
+          pfatal_with_name (dirfile);
+        }
+      if (close_status < 0)
+        pfatal_with_name (dirfile);
+      if (close_status != 0)
+        fatal (_("%s: compressor failed"), dirfile, 0);
+    }
   else
-    fclose (output);
+#if defined (VMS) || defined (__VMS)
+    {
+      char exact_name[NAML$C_MAXRSS + 1];
+
+      if (!fgetname (output, exact_name, 1))
+        {
+          if (!output_error)
+            saved_errno = errno ? errno : EIO;
+          output_error = 1;
+        }
+      if (fclose (output) != 0)
+        {
+          if (!output_error)
+            saved_errno = errno ? errno : EIO;
+          output_error = 1;
+        }
+      if (output_error)
+        {
+          errno = saved_errno;
+          pfatal_with_name (dirfile);
+        }
+      purge_old_dirfile_versions (exact_name);
+    }
+#else
+    {
+      if (fclose (output) != 0)
+        {
+          if (!output_error)
+            saved_errno = errno ? errno : EIO;
+          output_error = 1;
+        }
+      if (output_error)
+        {
+          errno = saved_errno;
+          pfatal_with_name (dirfile);
+        }
+    }
+#endif
 }
 
 /* Parse the input to find the section names and the entry names it

@@ -100,6 +100,14 @@ static int	vfcexec(const char *, int, const char *, va_list);
 #ifdef __VMS
 static int	vfcexec_script(const char *, const char *, va_list);
 static int	pfcexec_script(const char *, const char **);
+
+static const char vms_script_env_loader[] =
+    "for n in PKG_PREFIX PKG_DESTDIR PKG_METADATA_DIR "
+    "PKG_REFCOUNT_DBDIR; do "
+    "v=$1; shift; case \"$v\" in "
+    "S*) export \"$n=${v#S}\" ;; "
+    "U) unset \"$n\" ;; *) exit 125 ;; esac; done; "
+    "exec /bin/bash -- \"$@\"";
 #endif
 
 /*
@@ -228,26 +236,91 @@ vfcexec(const char *path, int skipempty, const char *arg, va_list ap)
 static int
 pfcexec_script(const char *path, const char **argv)
 {
-	char *cmd, *cp, *prevcwd;
+	enum {
+		vms_script_env_count = 4,
+		vms_dcl_max_elements = 127,
+		vms_dcl_max_element = 255,
+		vms_dcl_max_command = 1024,
+		vms_dcl_max_symbol = 255,
+		vms_dcl_bash_name_len = sizeof("BASH") - 1,
+		vms_dcl_safe_input = vms_dcl_max_command -
+		    (vms_dcl_max_symbol - vms_dcl_bash_name_len)
+	};
+	static const char * const env_names[] = {
+		PKG_PREFIX_VNAME,
+		PKG_DESTDIR_VNAME,
+		PKG_METADATA_DIR_VNAME,
+		PKG_REFCOUNT_DBDIR_VNAME
+	};
+	char *cmd, *cp, *env_args[vms_script_env_count], *prevcwd;
+	const char **bash_argv;
 	const char **arg;
-	const char *src;
-	size_t cmd_size;
+	const char *src, *value;
+	size_t argc, cmd_size, element_length, encoded_length, i;
 	int result, saved_errno;
+
+	/*
+	 * system(3) enters DCL before starting Bash, and process environment
+	 * changes made with setenv(3) do not cross that OpenVMS spawn boundary.
+	 * Carry the package-script variables as opaque positional parameters to
+	 * a constant Bash loader instead.  A leading S means set (including an
+	 * empty value); U means unset.  Values are never evaluated as shell text.
+	 */
+	for (argc = 0; argv[argc] != NULL; ++argc)
+		continue;
+	if (argc > vms_dcl_max_elements - vms_script_env_count - 2) {
+		errno = E2BIG;
+		return -1;
+	}
+	bash_argv = xcalloc(argc + vms_script_env_count + 4,
+	    sizeof(*bash_argv));
+	bash_argv[0] = argv[0];
+	bash_argv[1] = "-c";
+	bash_argv[2] = vms_script_env_loader;
+	bash_argv[3] = "pkg_install-script";
+	for (i = 0; i < vms_script_env_count; ++i) {
+		value = getenv(env_names[i]);
+		if (value == NULL)
+			env_args[i] = xstrdup("U");
+		else
+			env_args[i] = xasprintf("S%s", value);
+		bash_argv[4 + i] = env_args[i];
+	}
+	for (i = 1; i < argc; ++i)
+		bash_argv[3 + vms_script_env_count + i] = argv[i];
+	argv = bash_argv;
 
 	/*
 	 * system(3) invokes DCL on OpenVMS.  Quote Bash arguments using DCL's
 	 * doubled-double-quote convention, preserving case and whitespace.
 	 */
-	cmd_size = sizeof("BASH");
+	cmd_size = sizeof("BASH") - 1;
 	for (arg = argv + 1; *arg != NULL; ++arg) {
-		cmd_size += strlen(*arg) + 3;
+		element_length = 0;
+		encoded_length = 2;
 		for (src = *arg; *src != '\0'; ++src) {
+			if ((unsigned char)*src < 32 || (unsigned char)*src == 127 ||
+			    (*src == '\'' && src[1] == '\'')) {
+				errno = EINVAL;
+				goto validation_failed;
+			}
+			if (element_length == vms_dcl_max_element) {
+				errno = E2BIG;
+				goto validation_failed;
+			}
+			++element_length;
+			++encoded_length;
 			if (*src == '"')
-				++cmd_size;
+				++encoded_length;
 		}
+		if (encoded_length + 1 > vms_dcl_safe_input - cmd_size) {
+			errno = E2BIG;
+			goto validation_failed;
+		}
+		cmd_size += encoded_length + 1;
 	}
 
-	cmd = xmalloc(cmd_size);
+	cmd = xmalloc(cmd_size + 1);
 	memcpy(cmd, "BASH", sizeof("BASH") - 1);
 	cp = cmd + sizeof("BASH") - 1;
 	for (arg = argv + 1; *arg != NULL; ++arg) {
@@ -266,8 +339,13 @@ pfcexec_script(const char *path, const char **argv)
 	if (path != NULL) {
 		prevcwd = getcwd(NULL, 4096, 0);
 		if (prevcwd == NULL || chdir(path) < 0) {
+			saved_errno = errno;
 			free(prevcwd);
 			free(cmd);
+			for (i = 0; i < vms_script_env_count; ++i)
+				free(env_args[i]);
+			free(bash_argv);
+			errno = saved_errno;
 			return -1;
 		}
 	}
@@ -282,7 +360,18 @@ pfcexec_script(const char *path, const char **argv)
 
 	free(prevcwd);
 	free(cmd);
+	for (i = 0; i < vms_script_env_count; ++i)
+		free(env_args[i]);
+	free(bash_argv);
 	return result;
+
+validation_failed:
+	saved_errno = errno;
+	for (i = 0; i < vms_script_env_count; ++i)
+		free(env_args[i]);
+	free(bash_argv);
+	errno = saved_errno;
+	return -1;
 }
 
 static int

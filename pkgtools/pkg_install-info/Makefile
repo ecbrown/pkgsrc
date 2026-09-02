@@ -2,7 +2,7 @@
 #
 
 PKGNAME=		pkg_install-info-${VERSION}
-PKGREVISION=		3
+PKGREVISION=		5
 CATEGORIES=		pkgtools
 
 MAINTAINER=		pkgsrc-users@NetBSD.org
@@ -25,7 +25,12 @@ USE_BSD_MAKEFILE=	yes
 
 INSTALLATION_DIRS=	bin
 
+# A dot in a directory component is parsed as a file-type delimiter by the
+# OpenVMS native compiler wrapper.  This package supplies its own sources, so a
+# fixed, portable work-source name avoids that ambiguity on every platform.
+WRKSRC=			${WRKDIR}/pkginstallinfo45
+
 do-extract:
-	@${CP} -R ${FILESDIR} ${WRKSRC}
+	@${CP} -R ${FILESDIR}/. ${WRKSRC}
 
 .include "../../mk/bsd.pkg.mk"

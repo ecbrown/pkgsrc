@@ -59,6 +59,9 @@ USE_NATIVE_GCC=		yes
 # OpenVMS portability code.  Keep the VMS path and file-version handling
 # enabled when building the tools on VSI OpenVMS.
 CPPFLAGS+=	-D__VMS
+# A value returned from main is otherwise interpreted as a native VMS
+# condition code, where EXIT_FAILURE (1) is an odd success status.
+CFLAGS+=	-Wc/MAIN=POSIX_EXIT
 .endif
 
 .if ${OS_VARIANT} == "SCOOSR5"
@@ -149,6 +152,13 @@ LDFLAGS+=	-L${WRKDIR}/libarchive/.libs
 # VSI's linker accepts missing -l arguments, which makes the PCRE probes
 # produce false positives and leak unusable libraries into libarchive.pc.
 LIBARCHIVE_CONFIGURE_ARGS+=	--disable-posix-regex-lib
+# The unconditional libmd probe has the same false-positive behavior.  Its
+# follow-up header checks prevent a link leak today, but HAVE_LIBMD is wrong.
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_lib_md_MD5Init=no
+# The linked compatibility library exports timegm, but VSI time.h does not
+# declare it.  Use libarchive's fallback instead of an implicit-int call that
+# can truncate time_t.
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_timegm=no
 # GNV does not provide ranlib; VSI's librarian needs no indexing pass.
 LIBARCHIVE_CONFIGURE_ENV+=	RANLIB=${TOOLS_PLATFORM.ranlib:Q}
 .  endif
@@ -202,8 +212,10 @@ CONFIGURE_ENV+=	LIBS=${LIBS:Q}
 # papering over cracks, libarchive should not be using libnbcompat at all.
 CONFIGURE_ENV.SunOS+=	ac_cv_func_lchmod=no
 
+# Some platforms pre-create WRKSRC, so copy the directory contents rather
+# than nesting FILESDIR below it.
 do-extract:
-	@${CP} -R ${FILESDIR} ${WRKSRC}
+	@${CP} -R ${FILESDIR}/. ${WRKSRC}
 .if empty(USE_BUILTIN.bzip2:M[yY][eE][sS])
 	@${CP} -R ${FILESDIR.bzip2} ${WRKDIR}/bzip2
 .endif

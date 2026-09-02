@@ -97,7 +97,7 @@ extern int errno;
 #include <perror.h>
 #endif
 
-#ifndef HAVE_DECL_STRERROR
+#if !defined (HAVE_DECL_STRERROR) && !defined (VMS) && !defined (__VMS)
 extern char *strerror ();
 #endif
 

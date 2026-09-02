@@ -524,6 +524,10 @@ remove_pkg(const char *pkg)
 	plist_t *p;
 	int rv, late_error;
 
+	if (pkgdb_update_only && Fake) {
+		printf("Would delete package database entries for `%s'\n", pkg);
+		return 0;
+	}
 	if (pkgdb_update_only)
 		return pkgdb_remove_pkg(pkg) ? 0 : 1;
 
@@ -566,6 +570,10 @@ remove_pkg(const char *pkg)
 	}
 
 	setenv(PKG_REFCOUNT_DBDIR_VNAME, config_pkg_refcount_dbdir, 1);
+	if (destdir != NULL)
+		setenv(PKG_DESTDIR_VNAME, destdir, 1);
+	else
+		unsetenv(PKG_DESTDIR_VNAME);
 	fname = pkgdb_pkg_dir(pkg);
 	setenv(PKG_METADATA_DIR_VNAME, fname, 1);
 	free(fname);
@@ -774,6 +782,16 @@ main(int argc, char *argv[])
 	}
 
 	setenv(PKG_REFCOUNT_DBDIR_VNAME, pkgdb_refcount_dir(), 1);
+
+	/*
+	 * delete_package() owns the by-file database handle while removing a
+	 * package.  The handle opened above was only needed to discover and
+	 * order the packages, and opening the database a second time fails on
+	 * OpenVMS.  Keep it only for a real -O operation, which updates the
+	 * database directly without calling delete_package().
+	 */
+	if (!pkgdb_update_only || Fake)
+		pkgdb_close();
 
 	bad_count = 0;
 	while (!TAILQ_EMPTY(&sorted_pkgs)) {

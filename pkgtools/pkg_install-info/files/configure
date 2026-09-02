@@ -1137,9 +1137,11 @@ _ASBOX
       echo "$as_me: caught signal $ac_signal"
     echo "$as_me: exit $exit_status"
   } >&5
-  rm -f core *.core &&
-  rm -rf conftest* confdefs* conf$$* $ac_clean_files &&
-    exit $exit_status
+  # GNV rm reports an invalid-wildcard error when a glob has no matches.
+  # Cleanup must not replace the real configure exit status on OpenVMS.
+  rm -f core *.core 2>/dev/null || :
+  rm -rf conftest* confdefs* conf$$* $ac_clean_files 2>/dev/null || :
+  exit $exit_status
      ' 0
 for ac_signal in 1 2 13 15; do
   trap 'ac_signal='$ac_signal'; { (exit 1); exit 1; }' $ac_signal
@@ -4732,4 +4734,3 @@ if test "$no_create" != yes; then
   # would make configure fail if this is the last instruction.
   $ac_cs_success || { (exit 1); exit 1; }
 fi
-

@@ -99,6 +99,7 @@ struct pkg_task {
 	struct archive_entry *entry;
 
 	char *buildinfo[BI_ENUM_COUNT];
+	int unsafe_archive_path;
 
 	size_t dep_length, dep_allocated;
 	char **dependencies;
@@ -253,6 +254,267 @@ mkdir_parent(const char *path)
 	rv = mkdir_p(parent);
 	free(parent);
 	return rv;
+}
+
+/*
+ * OpenVMS C RTL relative path creation can fail after chdir(2), even when
+ * the same path expressed absolutely is writable.  Archive members are
+ * therefore extracted through absolute names rooted at install_prefix.
+ * Reject paths which could escape that root before constructing the name.
+ */
+static int
+vms_safe_archive_path(const char *path)
+{
+	const char *component, *slash;
+	size_t length;
+
+	if (path == NULL || path[0] == '\0' || path[0] == '/' ||
+	    strpbrk(path, ":[]<>^;\\") != NULL)
+		return 0;
+
+	component = path;
+	for (;;) {
+		slash = strchr(component, '/');
+		length = slash != NULL ? (size_t)(slash - component) :
+		    strlen(component);
+		if (length == 0 ||
+		    (length == 1 && component[0] == '.') ||
+		    (length == 2 && component[0] == '.' && component[1] == '.'))
+			return 0;
+		if (slash == NULL)
+			break;
+		component = slash + 1;
+	}
+
+	return 1;
+}
+
+static size_t
+vms_archive_root_length(const char *root)
+{
+	size_t length;
+
+	length = strlen(root);
+	while (length > 1 && root[length - 1] == '/')
+		--length;
+	return length;
+}
+
+static char *
+vms_archive_path_join(const char *root, const char *path)
+{
+	size_t root_length;
+
+	root_length = vms_archive_root_length(root);
+	return xasprintf("%.*s%s%s", (int)root_length, root,
+	    root_length == 1 ? "" : "/", path);
+}
+
+/* Verify that an archive path cannot traverse a symlink below the prefix. */
+static int
+vms_archive_parents_checked(const char *root, const char *path,
+    int must_exist, int *missing_parent)
+{
+	struct stat sb;
+	char *fullpath, *rootpath, *scan, *slash;
+	size_t root_length;
+	int rv, saved_errno;
+
+	if (missing_parent != NULL)
+		*missing_parent = 0;
+	if (!vms_safe_archive_path(path) || root == NULL || root[0] != '/') {
+		errno = EINVAL;
+		return 0;
+	}
+	root_length = vms_archive_root_length(root);
+	rootpath = xasprintf("%.*s", (int)root_length, root);
+	if (lstat(rootpath, &sb) == -1) {
+		free(rootpath);
+		return 0;
+	}
+	free(rootpath);
+	if (S_ISLNK(sb.st_mode)) {
+		errno = ELOOP;
+		return 0;
+	}
+	if (!S_ISDIR(sb.st_mode)) {
+		errno = ENOTDIR;
+		return 0;
+	}
+
+	fullpath = vms_archive_path_join(root, path);
+	scan = fullpath + root_length + (root_length == 1 ? 0 : 1);
+	while ((slash = strchr(scan, '/')) != NULL) {
+		*slash = '\0';
+		rv = lstat(fullpath, &sb);
+		saved_errno = errno;
+		*slash = '/';
+		if (rv == 0) {
+			if (S_ISLNK(sb.st_mode)) {
+				errno = ELOOP;
+				free(fullpath);
+				return 0;
+			}
+			if (!S_ISDIR(sb.st_mode)) {
+				errno = ENOTDIR;
+				free(fullpath);
+				return 0;
+			}
+		} else {
+			if (saved_errno == ENOENT && !must_exist) {
+				if (missing_parent != NULL)
+					*missing_parent = 1;
+				free(fullpath);
+				return 1;
+			}
+			errno = saved_errno;
+			free(fullpath);
+			return 0;
+		}
+		scan = slash + 1;
+	}
+
+	free(fullpath);
+	return 1;
+}
+
+static int
+vms_archive_parents_safe(const char *root, const char *path, int must_exist)
+{
+	return vms_archive_parents_checked(root, path, must_exist, NULL);
+}
+
+/* A directory PLIST entry must not itself be a symlink during rollback. */
+static int
+vms_archive_directory_leaf_safe(const char *root, const char *path)
+{
+	struct stat sb;
+	char *fullpath;
+	int missing_parent, saved_errno;
+
+	if (!vms_archive_parents_checked(root, path, 0, &missing_parent))
+		return 0;
+	if (missing_parent)
+		return 1;
+
+	fullpath = vms_archive_path_join(root, path);
+	if (lstat(fullpath, &sb) == -1) {
+		saved_errno = errno;
+		free(fullpath);
+		if (saved_errno == ENOENT)
+			return 1;
+		errno = saved_errno;
+		return 0;
+	}
+	free(fullpath);
+	if (S_ISLNK(sb.st_mode)) {
+		errno = ELOOP;
+		return 0;
+	}
+
+	return 1;
+}
+
+/*
+ * delete_package(3) walks the complete PLIST, including entries which were
+ * not reached during extraction.  Revalidate it against the resulting tree
+ * before rollback so a package-created symlink cannot redirect cleanup.
+ */
+static int
+vms_plist_cleanup_safe(struct pkg_task *pkg)
+{
+	plist_t *p;
+
+	for (p = pkg->plist.head; p != NULL; p = p->next) {
+		if (p->type == PLIST_IGNORE) {
+			if (p->next != NULL)
+				p = p->next;
+			continue;
+		}
+		switch (p->type) {
+		case PLIST_FILE:
+			if (!vms_archive_parents_safe(pkg->install_prefix,
+			    p->name, 0))
+				return 0;
+			break;
+		case PLIST_PKGDIR:
+		case PLIST_DIR_RM:
+			if (!vms_archive_directory_leaf_safe(pkg->install_prefix,
+			    p->name))
+				return 0;
+			break;
+		default:
+			break;
+		}
+	}
+
+	return 1;
+}
+
+/* Drop only this failed package's database keys, without touching files. */
+static int
+vms_forget_plist_records(struct pkg_task *pkg)
+{
+	plist_t *p;
+	char *fullpath, *owner;
+	int rv;
+
+	if (NoRecord)
+		return 0;
+	if (!pkgdb_open(ReadWrite))
+		return -1;
+
+	rv = 0;
+	for (p = pkg->plist.head; p != NULL; p = p->next) {
+		if (p->type == PLIST_IGNORE) {
+			if (p->next != NULL)
+				p = p->next;
+			continue;
+		}
+		if (p->type == PLIST_PKGDIR) {
+			delete_pkgdir(pkg->pkgname, pkg->prefix, p->name);
+			continue;
+		}
+		if (p->type != PLIST_FILE)
+			continue;
+
+		fullpath = xasprintf("%s/%s", pkg->prefix, p->name);
+		errno = 0;
+		owner = pkgdb_retrieve(fullpath);
+		if (owner != NULL && strcmp(owner, pkg->pkgname) == 0) {
+			errno = 0;
+			if (pkgdb_remove(fullpath) != 0 && errno != 0)
+				rv = -1;
+		} else if (owner == NULL && errno != 0) {
+			rv = -1;
+		}
+		free(fullpath);
+	}
+	pkgdb_close();
+
+	return rv;
+}
+
+static int
+vms_archive_hardlink_safe(const char *root, const char *path)
+{
+	struct stat sb;
+	char *fullpath;
+
+	if (!vms_archive_parents_safe(root, path, 1))
+		return 0;
+	fullpath = vms_archive_path_join(root, path);
+	if (lstat(fullpath, &sb) == -1) {
+		free(fullpath);
+		return 0;
+	}
+	free(fullpath);
+	if (!S_ISREG(sb.st_mode) || S_ISLNK(sb.st_mode)) {
+		errno = EINVAL;
+		return 0;
+	}
+
+	return 1;
 }
 #endif
 
@@ -720,6 +982,8 @@ extract_files(struct pkg_task *pkg)
 	const char *last_file;
 	char *fullpath;
 #ifdef __VMS
+	const char *hardlink;
+	char *hardlinkpath;
 	char *workdir;
 #else
 	int workdir;
@@ -727,6 +991,15 @@ extract_files(struct pkg_task *pkg)
 
 	if (Fake)
 		return 0;
+
+#ifdef __VMS
+	if (pkg->install_prefix[0] != '/') {
+		warnx("%s: OpenVMS install prefix is not absolute: %s",
+		    pkg->pkgname, pkg->install_prefix);
+		pkg->unsafe_archive_path = 1;
+		return -1;
+	}
+#endif
 
 	if (mkdir_p(pkg->install_prefix)) {
 		warn("%s: can't create prefix: %s", pkg->pkgname, pkg->install_prefix);
@@ -792,7 +1065,16 @@ extract_files(struct pkg_task *pkg)
 				goto out;
 			}
 #ifdef __VMS
-			fullpath = xasprintf("%s/%s", pkg->install_prefix,
+			if (!vms_archive_parents_safe(pkg->install_prefix,
+			    p->name, 0)) {
+				warnx("%s: unsafe archive pathname %s: %s",
+				    pkg->pkgname,
+				    p->name != NULL ? p->name : "(null)",
+				    strerror(errno));
+				pkg->unsafe_archive_path = 1;
+				goto out;
+			}
+			fullpath = vms_archive_path_join(pkg->install_prefix,
 			    p->name);
 			if (mkdir_parent(fullpath)) {
 				warn("%s: can't create parent directory for %s",
@@ -800,7 +1082,33 @@ extract_files(struct pkg_task *pkg)
 				free(fullpath);
 				goto out;
 			}
+			if (!vms_archive_parents_safe(pkg->install_prefix,
+			    p->name, 1)) {
+				warnx("%s: unsafe archive parent for %s: %s",
+				    pkg->pkgname, p->name, strerror(errno));
+				free(fullpath);
+				pkg->unsafe_archive_path = 1;
+				goto out;
+			}
+			archive_entry_set_pathname(pkg->entry, fullpath);
 			free(fullpath);
+
+			hardlink = archive_entry_hardlink(pkg->entry);
+			if (hardlink != NULL) {
+				if (!vms_archive_hardlink_safe(
+				    pkg->install_prefix, hardlink)) {
+					warnx("%s: unsafe archive hardlink %s: %s",
+					    pkg->pkgname, hardlink,
+					    strerror(errno));
+					pkg->unsafe_archive_path = 1;
+					goto out;
+				}
+				hardlinkpath = vms_archive_path_join(
+				    pkg->install_prefix, hardlink);
+				archive_entry_set_hardlink(pkg->entry,
+				    hardlinkpath);
+				free(hardlinkpath);
+			}
 #endif
 			fullpath = xasprintf("%s/%s", pkg->prefix, p->name);
 			pkgdb_store(fullpath, pkg->pkgname);
@@ -1074,6 +1382,8 @@ run_install_script(struct pkg_task *pkg, const char *argument)
 
 	if (Destdir != NULL)
 		setenv(PKG_DESTDIR_VNAME, Destdir, 1);
+	else
+		unsetenv(PKG_DESTDIR_VNAME);
 	setenv(PKG_PREFIX_VNAME, pkg->prefix, 1);
 	setenv(PKG_METADATA_DIR_VNAME, pkg->logdir, 1);
 	setenv(PKG_REFCOUNT_DBDIR_VNAME, config_pkg_refcount_dbdir, 1);
@@ -1737,7 +2047,24 @@ nuke_pkg:
 			    pkg->pkgname, pkg->other_version, pkg->pkgname);
 			warnx("Remember to run pkg_admin rebuild-tree after fixing this.");
 		}
-		delete_package(FALSE, &pkg->plist, FALSE, Destdir);
+#ifdef __VMS
+		if (!pkg->unsafe_archive_path && !vms_plist_cleanup_safe(pkg)) {
+			warnx("%s: unsafe rollback pathname: %s",
+			    pkg->pkgname, strerror(errno));
+			pkg->unsafe_archive_path = 1;
+		}
+#endif
+		if (pkg->unsafe_archive_path) {
+#ifdef __VMS
+			if (vms_forget_plist_records(pkg) != 0)
+				warnx("%s: package database cleanup failed; "
+				    "run pkg_admin rebuild", pkg->pkgname);
+#endif
+			warnx("%s: unsafe archive path; file cleanup skipped",
+			    pkg->pkgname);
+		} else {
+			delete_package(FALSE, &pkg->plist, FALSE, Destdir);
+		}
 	}
 
 nuke_pkgdb:
