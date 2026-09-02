@@ -45,7 +45,8 @@ OBJS = lwlib.obj, $(TOOLKIT_OBJS), lwlib-utils.obj
 
 ALL_CFLAGS= $(C_SWITCH_SITE) $(C_SWITCH_SYSTEM) $(C_SWITCH_X_SITE) \
   $(C_SWITCH_X_SYSTEM) $(C_SWITCH_MACHINE) $(CPPFLAGS) $(CFLAGS) \
-  /define=(EMACS_BITMAP_FILES,"emacs" 'extra_defs')
+  /define=(HAVE_CONFIG_H,EMACS_BITMAP_FILES,"emacs" 'extra_defs') \
+  /include=(local_includes)
 
 .FIRST :
 	if "$(sys_includes)" .nes. "" then -
@@ -55,6 +56,8 @@ ALL_CFLAGS= $(C_SWITCH_SITE) $(C_SWITCH_SYSTEM) $(C_SWITCH_X_SITE) \
 	if "$(x_includes)" .nes. "" then -
 		define /nolog x11 $(x_includes)
 	define /nolog local_src $(srcdir)
+	if f$trnlnm("local_includes") .eqs. "" then -
+		define /nolog local_includes sys$disk:[],$(srcdir),$(srcdir_dev)[$(srcdir_dir).-.src]
 	extra_defs = ""
 
 .c.obj :

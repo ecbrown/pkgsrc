@@ -1,0 +1,107 @@
+# $NetBSD$
+
+case "${STAGE}" in
+POST-INSTALL)
+	# PREFIX in the legacy package-script header is the build-time prefix.
+	# pkg_add supplies PKG_PREFIX for a relocated binary package.
+	: "${PKG_PREFIX:=${PREFIX}}"
+	: "${PKG_DESTDIR:=}"
+	(
+		emacs22_dump_created=no
+		emacs22_startup_created=no
+		emacs22_metadata_created=no
+		emacs22_rollback()
+		{
+			emacs22_status=$?
+			trap - 0
+			if [ "${emacs22_status}" -ne 0 ]; then
+				if [ "${emacs22_metadata_created}" = yes ]; then
+					"${RM}" -f "${emacs22_metadata}"
+				fi
+				if [ "${emacs22_dump_created}" = yes ]; then
+					"${emacs22_path_helper}" --delete-exact \
+						"${emacs22_dump_exact}" >/dev/null 2>&1 || :
+				fi
+				if [ "${emacs22_startup_created}" = yes ]; then
+					"${emacs22_path_helper}" --delete-exact \
+						"${emacs22_startup_exact}" >/dev/null 2>&1 || :
+				fi
+				# The standard install fragment runs first.  Undo its Info
+				# registration if this package-specific step fails.
+				[ ! -x ./+INFO_FILES ] ||
+					./+INFO_FILES REMOVE "${PKG_METADATA_DIR}" >/dev/null 2>&1 || :
+				# PRE-INSTALL has already registered package-owned
+				# directories.  pkg_add does not invoke +DEINSTALL when
+				# this POST-INSTALL script fails, so remove those reference
+				# counts here as well.
+				[ ! -x ./+DIRS ] ||
+					./+DIRS REMOVE "${PKG_METADATA_DIR}" >/dev/null 2>&1 || :
+			fi
+			exit "${emacs22_status}"
+		}
+		trap emacs22_rollback 0
+		emacs22_validate_exact()
+		{
+			emacs22_name=$1
+			emacs22_base=${emacs22_name%;*}
+			[ "${emacs22_base}" != "${emacs22_name}" ] || return 1
+			emacs22_version=${emacs22_name##*;}
+			case "${emacs22_version}" in
+			''|*[!0-9]*) return 1 ;;
+			esac
+			case "${emacs22_version}" in
+			*[!0]*) ;;
+			*) return 1 ;;
+			esac
+			case "${emacs22_name}" in
+			*\"*) return 1 ;;
+			esac
+			return 0
+		}
+
+		emacs22_posix_prefix="${PKG_DESTDIR}${PKG_PREFIX}"
+		emacs22_path_helper="${emacs22_posix_prefix}/bin/emacs22-vms-path.exe"
+		[ -f "${emacs22_path_helper}" ] || exit 1
+		emacs22_runtime_vms_prefix=$("${emacs22_path_helper}" \
+			--physical-prefix) || exit $?
+		[ -n "${emacs22_runtime_vms_prefix}" ] || exit 1
+		emacs22_runtime_vms_root=${emacs22_runtime_vms_prefix%]}
+		emacs22_metadata="${PKG_METADATA_DIR}/+EMACS22_VMS_FILES"
+		[ ! -e "${emacs22_metadata}" ] || exit 1
+
+		emacs22_dump_raw="${emacs22_posix_prefix}/bin/emacs-22_3.dump-pkgsrc"
+		emacs22_dump="${emacs22_posix_prefix}/bin/emacs-22_3.dump"
+		emacs22_dump_exact=$("${emacs22_path_helper}" --copy-excl udf \
+			"${emacs22_dump_raw}" "${emacs22_dump}") || exit $?
+		emacs22_dump_created=yes
+		emacs22_validate_exact "${emacs22_dump_exact}" || exit 1
+		"${emacs22_path_helper}" --set-dump-attrs \
+			"${emacs22_dump_exact}" || exit $?
+
+		emacs22_startup_raw="${emacs22_posix_prefix}/startup/EMACS-22_3_STARTUP.COM-PKGSRC"
+		emacs22_startup="${emacs22_posix_prefix}/startup/EMACS-22_3_STARTUP.COM"
+		emacs22_startup_exact=$("${emacs22_path_helper}" --copy-excl stmlf \
+			"${emacs22_startup_raw}" "${emacs22_startup}") || exit $?
+		emacs22_startup_created=yes
+		emacs22_validate_exact "${emacs22_startup_exact}" || exit 1
+		"${emacs22_path_helper}" --replace-startup-marker \
+			"${emacs22_startup_exact}" \
+			"${emacs22_runtime_vms_root}" || exit $?
+
+		# The helper opens the captured exact RMS version, requires at least
+		# one marker, rejects a replacement that still contains a marker, and
+		# flushes that exact version before returning.  Do not recheck through
+		# the versionless POSIX name: a concurrent creator can make another
+		# OpenVMS version become the versionless name's target.
+
+		emacs22_metadata_created=yes
+		{
+			printf '%s\n' 'FORMAT=1'
+			printf 'DUMP=%s\n' "${emacs22_dump_exact}"
+			printf 'STARTUP=%s\n' "${emacs22_startup_exact}"
+		} > "${emacs22_metadata}" || exit $?
+		"${CHMOD}" 600 "${emacs22_metadata}" || exit $?
+		trap - 0
+	) || exit $?
+	;;
+esac

@@ -164,11 +164,11 @@ get_doc_string (filepos, unibyte, definition)
   tem = Ffile_name_absolute_p (file);
   if (NILP (tem))
     {
-      minsize = SCHARS (Vdoc_directory);
+      minsize = SBYTES (Vdoc_directory);
       /* sizeof ("../etc/") == 8 */
       if (minsize < 8)
 	minsize = 8;
-      name = (char *) alloca (minsize + SCHARS (file) + 8);
+      name = (char *) alloca (minsize + SBYTES (file) + 8);
       strcpy (name, SDATA (Vdoc_directory));
       strcat (name, SDATA (file));
       munge_doc_file_name (name);
@@ -601,7 +601,7 @@ the same file name is found in the `doc-directory'.  */)
       (0)
 #endif /* CANNOT_DUMP */
     {
-      name = (char *) alloca (SCHARS (filename) + 14);
+      name = (char *) alloca (SBYTES (filename) + 14);
 #ifndef VMS
       strcpy (name, "../etc/");
 #else
@@ -611,8 +611,8 @@ the same file name is found in the `doc-directory'.  */)
   else
     {
       CHECK_STRING (Vdoc_directory);
-      name = (char *) alloca (SCHARS (filename)
-			  + SCHARS (Vdoc_directory) + 1);
+      name = (char *) alloca (SBYTES (filename)
+			  + SBYTES (Vdoc_directory) + 3);
       strcpy (name, SDATA (Vdoc_directory));
     }
   strcat (name, SDATA (filename)); 	/*** Add this line ***/

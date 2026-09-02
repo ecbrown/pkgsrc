@@ -41,9 +41,9 @@ Boston, MA 02110-1301, USA.  */
 #define SELECT_TYPE int
 
 /* Define the macros to access a single-int bitmap of descriptors.  */
-#define FD_SET(n, p) (*(p) |= (1 << (n)))
-#define FD_CLR(n, p) (*(p) &= ~(1 << (n)))
-#define FD_ISSET(n, p) (*(p) & (1 << (n)))
+#define FD_SET(n, p) (*(p) |= (SELECT_TYPE) (1UL << (unsigned) (n)))
+#define FD_CLR(n, p) (*(p) &= ~(SELECT_TYPE) (1UL << (unsigned) (n)))
+#define FD_ISSET(n, p) (*(p) & (SELECT_TYPE) (1UL << (unsigned) (n)))
 #define FD_ZERO(p) (*(p) = 0)
 #endif /* no FD_SET */
 
@@ -52,12 +52,14 @@ Boston, MA 02110-1301, USA.  */
 #undef FD_CLR
 #undef FD_ISSET
 #undef FD_ZERO
-#define FD_SET(n, p) (*(p) |= (1 << (n)))
-#define FD_CLR(n, p) (*(p) &= ~(1 << (n)))
-#define FD_ISSET(n, p) (*(p) & (1 << (n)))
+#define FD_SET(n, p) (*(p) |= (SELECT_TYPE) (1UL << (unsigned) (n)))
+#define FD_CLR(n, p) (*(p) &= ~(SELECT_TYPE) (1UL << (unsigned) (n)))
+#define FD_ISSET(n, p) (*(p) & (SELECT_TYPE) (1UL << (unsigned) (n)))
 #define FD_ZERO(p) (*(p) = 0)
 #undef SELECT_TYPE
 #define SELECT_TYPE int
+#undef MAXDESC
+#define MAXDESC 32
 #endif
 
 #if !defined (HAVE_SELECT) || defined (BROKEN_SELECT_NON_X)

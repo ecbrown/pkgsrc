@@ -27,7 +27,7 @@ $
 $ vue$get_next_selection
 $ vue$read selection
 $ startupdir := @startupdir@
-$ startup_command := @'startupdir'gnu_startup emacs-@version@ nologicals
+$ startup_command := @'startupdir'EMACS-@version_us@_STARTUP
 $ if f$search(startupdir + "EMACS_STARTUP.COM") .nes. "" then -
 $	startup_command := @'startupdir'emacs_startup nologicals
 $ 'startup_command'

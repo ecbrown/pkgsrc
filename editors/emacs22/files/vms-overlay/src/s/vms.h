@@ -204,11 +204,14 @@ inet_addr,connect,listen,bind,accept,socket))\
 
 /* This is super weird.  --ttn  */
 #define asdf_C_DEBUG_SWITCH  /deb/noopt
-#define C_DEBUG_SWITCH /op=(le=5,t=h)
+/* VSI DEC C for x86_64 accepts LEVEL=5 but has no TUNE=HOST keyword.  */
+#define C_DEBUG_SWITCH /OPTIMIZE=LEVEL=5
 
 #define LIB_MATH
 #define LIB_STANDARD
 #define LIB_X11_LIB sys$share:decw$xlibshr/share
+/* VSI DECwindows supplies Xmu R5 without the optional Editres callback.  */
+#define NO_EDITRES
 /* this used to have a comma --ttn  */
 #define UNEXEC vmsmap.obj
 #ifdef UNEXEC_SRC

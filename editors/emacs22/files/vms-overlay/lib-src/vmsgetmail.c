@@ -37,6 +37,7 @@ char *version_string = "GNU VMS getmail version 1.0";
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <ssdef.h>
 #include <stsdef.h>
@@ -55,6 +56,9 @@ char *version_string = "GNU VMS getmail version 1.0";
 
 #include <mailmsgdef.h>
 #include "mail.h"
+/* Match the replacement namespace selected in src/config.h for the other
+   lib-src programs without importing Emacs's C run-time remapping here.  */
+#define __GETOPT_PREFIX rpl_
 #include "getopt.h"
 
 #include <mail$routines.h>	/* ttn */
@@ -119,6 +123,7 @@ union mail$flags
 /* The program name, as called in argv[0], will go here. */
 static char *program;
 
+static void
 getmail_help ()
 {
   printf ("Usage: %s [-adnvV] [-f file] [-F folder] [-u user]\n\n\
@@ -140,6 +145,7 @@ Folder names should be enclosed in double-quotes to preserve case.\n",
 	  program);
 }
 
+static void
 getmail_usage ()
 {
   fprintf (stderr, "Usage: %s %s\n%s %s %s",
@@ -157,19 +163,23 @@ getmail_usage ()
 static struct Vstring folder = { 0, "" }; /* VMS Mail folder name */
 static struct Vstring user = { 0, "" };
 
-static inline
+static inline void
 ftrunc (out, pos)
   FILE *out;
   fpos_t pos;
 {
-  char timestamp[24];
+  char timestamp[24] = "";
   $DESCRIPTOR (timedsc, timestamp);
-  short len;
+  unsigned short len = 0;
+  int time_status;
 
+  time_status = sys$asctim (&len, &timedsc, 0, 0);
+  if ((time_status & 1) && len < sizeof timestamp)
+    timestamp[len] = 0;
+  else
+    strcpy (timestamp, "time unavailable");
   if (out != stdout)
     {
-      sys$asctim (&len, &timedsc, 0, 0);
-      timestamp[len] = 0;
       vaxc$errno = errno = 0;
       if (fsetpos (out, &pos) != 0)
 	{
@@ -182,6 +192,23 @@ ftrunc (out, pos)
 	   program, "\"VMS getmail\"", timestamp, user.body,
 	   "", "Message truncated due to errors, original in", folder.body);
 }
+
+/* Preserve the first failure while still allowing the remaining MAIL$
+ * contexts to be closed. */
+static void
+record_failure (operation, status, exit_status)
+  char *operation;
+  long status;
+  long *exit_status;
+{
+  if (status != SS$_NORMAL)
+    {
+      fprintf (stderr, "\n%s: %s failed, status %08lX\n",
+	       program, operation, (unsigned long) status);
+      if (*exit_status == SS$_NORMAL)
+	*exit_status = status;
+    }
+}
 
 /* This is a simple "report the message and die" macro.
  * It is only suitable for early errors which requiree no cleanup */
@@ -191,6 +218,7 @@ ftrunc (out, pos)
     exit (status); }
 
 
+int
 main (argc, argv)
   int argc;
   char **argv;
@@ -246,12 +274,12 @@ main (argc, argv)
   char ExternalID[BUFLEN];	/* Message External ID */
   char MailDirectory[BUFLEN];	/* Mail directory name */
   /* Corresponding lengths for the above */
-  size_t lCC, lDate, lFrom, lReply, lSender, lSubject, lTo;
-  size_t lExternalID, lMailDirectory;
+  unsigned int lCC, lDate, lFrom, lReply, lSender, lSubject, lTo;
+  unsigned int lExternalID, lMailDirectory;
 
   char *Buffer;			/* Message body record */
   int BufferSize = 0;		/* Allocated size of Buffer */
-  size_t lBuffer;		/* Message body length */
+  unsigned int lBuffer;		/* Message body length */
 
   /* The Convienient shorthand definitions */
   /* Retrieve the message header information */
@@ -298,26 +326,26 @@ main (argc, argv)
   FILE *out = stdout;		/* Output file pointer */
   fpos_t lastpos;		/* Last "safe" position in output file */
   long status;			/* VMS return status */
+  long exit_status = SS$_NORMAL;	/* Status returned after orderly cleanup */
   long selected;		/* Number of messages selected/processed */
 
   struct flagsdef mailflags;	/* Message flags */
   long autopurge;		/* User has done SET AUTO_PURGE */
 
   int i, cnt;			/* Local counters */
+  int newmail_cleared = 0;	/* Messages whose new flag was cleared */
   int opt, option_index;	/* getopt variables */
+  char *environment_user;
+  char *program_end;
 
-  /* Initialize here. */
-  Buffer = (char *) malloc (sizeof(char) * (BufferSize=FILEBUFLEN));
-
-  strcpy (user.body, getenv("USER"));
-  user.length = strlen(user.body);
-  
   /* Hack argv[0] to be "pretty", use `program' to point to the result. */
   program = strrchr(*argv,']');
   if (program)
     {
       program++;
-      *strchr(program,'.') = 0;    
+      program_end = strchr (program, '.');
+      if (program_end != NULL)
+	*program_end = 0;
     }
   else
     program = *argv;
@@ -325,6 +353,18 @@ main (argc, argv)
   *argv = program;
   
   progname = program;
+
+  /* Initialize here. */
+  BufferSize = FILEBUFLEN;
+  Buffer = xmalloc ((unsigned int) BufferSize);
+
+  environment_user = getenv ("USER");
+  if (environment_user == NULL || *environment_user == '\0')
+    fatal ("environment variable USER is not defined", 0);
+  if (strlen (environment_user) >= sizeof user.body)
+    fatal ("environment variable USER is too long", 0);
+  strcpy (user.body, environment_user);
+  user.length = strlen(user.body);
 
   /* Handle the command line args */
   while (1)
@@ -361,16 +401,29 @@ main (argc, argv)
 	  break;
 	case 'u':
 	  fprintf (stderr, "%s: --user not implemented\n", program);
-	  strcpy (user.body, optarg);
-	  user.length = strlen(user.body);
+	  if (strlen (optarg) >= sizeof user.body)
+	    fprintf (stderr, "%s: user name is too long\n", program);
+	  else
+	    {
+	      strcpy (user.body, optarg);
+	      user.length = strlen(user.body);
+	    }
 	  badargs = TRUE;
 	  break;
 	case 'v':
 	  printf ("%s", version_string);
 	  break;
 	case 'F':
-	  strcpy (folder.body, optarg);
-	  folder.length = strlen(folder.body);
+	  if (strlen (optarg) >= sizeof folder.body)
+	    {
+	      fprintf (stderr, "%s: folder name is too long\n", program);
+	      badargs = TRUE;
+	    }
+	  else
+	    {
+	      strcpy (folder.body, optarg);
+	      folder.length = strlen(folder.body);
+	    }
 	  break;
 	case 'V':
 	  verbose = TRUE;
@@ -445,7 +498,7 @@ main (argc, argv)
 
   /* If --count --newmail was specified, just give the count and exit.
    * If --folder "NEWMAIL" was also specified, defer until the folder is open. */
-  if (count && newmail && folder.length != 0)
+  if (count && newmail && folder.length == 0)
     {
       printf ("\nYou have %d new mail message%s", newcount,
 	      ((newcount > 1 || newcount == 0) ? "s" : ""));
@@ -498,15 +551,24 @@ main (argc, argv)
   
   $SETITM3 (outlst[0], sizeof(selected), MAIL$_MESSAGE_SELECTED, &selected, 0);
   $CLRITM3 (outlst[1]);
+  selected = 0;
   status = mail$message_select (&msgctx, inlst, outlst);
-  if ((status != MAIL$_NOTEXIST)) /* && (strcmp(folder.body,"NEWMAIL") != 0))*/
-    { errchk (status); }
-  else if (count || verbose)
+  if (status != MAIL$_NOTEXIST)
+    errchk (status);
+  if (count || verbose)
     {
       printf ("\nFolder %s contains %d message%s", folder.body, selected,
 	      ((selected > 1 || selected == 0) ? "s" : ""));
       if (count)
-	exit (SS$_NORMAL);
+	{
+	  status = mail$message_end (&msgctx, nullitm, nullitm);
+	  record_failure ("mail$message_end", status, &exit_status);
+	  status = mail$mailfile_close (&filectx, nullitm, nullitm);
+	  record_failure ("mail$mailfile_close", status, &exit_status);
+	  status = mail$mailfile_end (&filectx, nullitm, nullitm);
+	  record_failure ("mail$mailfile_end", status, &exit_status);
+	  exit (exit_status);
+	}
     }
 
   /* If selected == 0, quit now. */
@@ -517,7 +579,11 @@ main (argc, argv)
       { errchk (status); }
   
   /* Allocate some space for keeping message id's */
-  message = (long *) malloc (sizeof(long) * (Nmsgs=2*selected));
+  if (selected < 0 || selected > INT_MAX / 2
+      || (unsigned long) selected > UINT_MAX / (2 * sizeof (long)))
+    fatal ("too many messages selected", 0);
+  Nmsgs = selected == 0 ? 2 : 2 * (int) selected;
+  message = (long *) xmalloc ((unsigned int) (sizeof (long) * Nmsgs));
 
   /* If no file was specified, skip this.
    * Note: RMS may fail to open the file.  The most likely error is
@@ -543,9 +609,16 @@ main (argc, argv)
   errno = 0;
   if (file && fgetpos (out, &lastpos) != 0)
     {
-      printf ("\nCouldn't get postion on file!\n");
-      perror ("fgetpos");
-      abort();
+      fprintf (stderr, "\n%s: couldn't get initial output position\n",
+	       program);
+      if (errno != 0)
+	perror ("fgetpos");
+      if (fclose (out) != 0)
+	fprintf (stderr, "%s: error closing output file %s\n",
+		 program, file);
+      selected = 0;
+      exit_status = SS$_ABORT;
+      goto cleanup;
     }
   /* mail$message_get signals an error we there are no more messages.
      Our error handler will catch that, but we need to reset the
@@ -561,6 +634,13 @@ main (argc, argv)
 	    printf ("\nNo more messages");
 	  selected = cnt;
 	  break;
+	}
+      if (status != SS$_NORMAL)
+	{
+	  fprintf (stderr, "\n%s: mail$message_get failed, status %08lX\n",
+		   program, (unsigned long) status);
+	  exit_status = status;
+	  goto processing_error;
 	}
       if (verbose)
 	printf ("\nProcessing message %d...", cnt+1);
@@ -595,12 +675,7 @@ main (argc, argv)
 	  fprintf (stderr, "\n%s: %s\n",
 		   program,
 		   "incomplete fwrite on message header");
-	  selected = cnt;
-	  /* Until we have a real ftrunc(), just do the cleanup */
-	  /* ftrunc (out, lastpos); */
-	  if (file)
-	    fclose (out);
-	  goto cleanup;
+	  goto message_output_error;
 	}
 
       /* If the message is in an external file, then open that file directly
@@ -617,30 +692,41 @@ main (argc, argv)
 	      fprintf (stderr, "\n%s: %s%s%s\n",
 		       program, "couldn't open ",
 		       MailDirectory, ExternalID);
-	      fclose (ext);
-	      selected = cnt;
-	      ftrunc (out, lastpos);
-	      if (file)
-		fclose (out);
-	      goto cleanup;
+	      goto message_output_error;
 	    }
-	  lBuffer = fread (Buffer, sizeof(char), BufferSize, ext);
-	  while (lBuffer)
+	  errno = 0;
+	  while ((lBuffer = fread (Buffer, sizeof (char), BufferSize, ext)) != 0)
 	    {
 	      if (fwrite (Buffer, sizeof(char)*lBuffer, 1, out) != 1)
 		{
 		  fprintf (stderr, "\n%s: %s%s%s\n",
 			   program, "incomplete fwrite from external file ",
 			   MailDirectory, ExternalID);
-		  selected = cnt;
-		  ftrunc (out, lastpos);
-		  if (file)
-		    fclose (out);
-		  goto cleanup;
+		  if (fclose (ext) != 0)
+		    fprintf (stderr, "%s: error closing external message file\n",
+			     program);
+		  goto message_output_error;
 		}
-	      lBuffer = fread (Buffer, sizeof(char), BufferSize, ext);
 	    }
-	  fclose (ext);
+	  if (ferror (ext))
+	    {
+	      fprintf (stderr, "\n%s: %s%s%s\n",
+		       program, "error reading external file ",
+		       MailDirectory, ExternalID);
+	      if (errno != 0)
+		perror ("fread");
+	      if (fclose (ext) != 0)
+		fprintf (stderr, "%s: error closing external message file\n",
+			 program);
+	      goto message_output_error;
+	    }
+	  if (fclose (ext) != 0)
+	    {
+	      fprintf (stderr, "\n%s: %s%s%s\n",
+		       program, "error closing external file ",
+		       MailDirectory, ExternalID);
+	      goto message_output_error;
+	    }
 	}
       else
 	/* Message is not in an external file */
@@ -649,6 +735,14 @@ main (argc, argv)
 	  status = mail$message_get (&msgctx, sameitm, messagelst);
 	  while (status != MAIL$_NOMOREREC)
 	    {
+	      if (status != SS$_NORMAL)
+		{
+		  fprintf (stderr,
+			   "\n%s: mail$message_get record failed, status %08lX\n",
+			   program, (unsigned long) status);
+		  exit_status = status;
+		  goto message_output_error;
+		}
 	      if (rectype == MAIL$_MESSAGE_TEXT)
 		{
 		  /* Same as with headers except for the message body now */
@@ -660,76 +754,106 @@ main (argc, argv)
 		      fprintf (stderr, "\n%s: %s%s%s\n",
 			       program, "incomplete fwrite from message ",
 			       MailDirectory, ExternalID);
-		      selected = cnt;
-		      ftrunc (out, lastpos);
-		      if (file)
-			fclose (out);
-		      goto cleanup;
+		      goto message_output_error;
 		    }
 		}
 	      status = mail$message_get (&msgctx, sameitm, messagelst);
 	    }
 	}
       /* Flush the message to disk */
-      fflush (out);
       errno = 0;
+      if (fflush (out) != 0)
+	{
+	  fprintf (stderr, "\n%s: couldn't flush message output\n", program);
+	  if (errno != 0)
+	    perror ("fflush");
+	  goto message_output_error;
+	}
       if (file && fgetpos (out, &lastpos) != 0)
 	{
-	  printf ("\nCouldn't get postion on file!\n");
-	  perror ("fsetpos");
-	  abort();
+	  fprintf (stderr, "\n%s: couldn't get position on output file\n",
+		   program);
+	  if (errno != 0)
+	    perror ("fgetpos");
+	  goto message_output_error;
 	}
       if (Nmsgs <= cnt)
-	if (!realloc (message, sizeof(long) * (Nmsgs*=2)))
-	  {
-	    fprintf (stderr, "%s: %s", program,
-		     "memory exhausted while allocating message id space\n");
-	    selected = cnt;
-	    ftrunc (out, lastpos);
-	    if (file)
-	      fclose (out);
-	    goto cleanup;
-	  }
+	{
+	  if (Nmsgs > INT_MAX / 2
+	      || (unsigned int) Nmsgs > UINT_MAX / (2 * sizeof (long)))
+	    fatal ("too many messages processed", 0);
+	  Nmsgs *= 2;
+	  message = (long *) xrealloc ((char *) message,
+					 (unsigned int) (sizeof (long) * Nmsgs));
+	}
       message[cnt] = msgid;
       if (verbose)
 	printf (".  Done.");
+      continue;
+
+    message_output_error:
+      /* Do not acknowledge the current message.  Earlier message IDs were
+	 recorded only after a successful fflush, so they remain safe to process. */
+      if (file)
+	{
+	  clearerr (out);
+	  ftrunc (out, lastpos);
+	}
+      if (exit_status == SS$_NORMAL)
+	exit_status = SS$_ABORT;
+
+    processing_error:
+      selected = cnt;
+      if (file && fclose (out) != 0)
+	{
+	  fprintf (stderr, "\n%s: error closing output file %s\n",
+		   program, file);
+	  if (errno != 0)
+	    perror ("fclose");
+	  /* A close error can report an RMS failure that fflush did not.  Do
+	     not change any mailbox state unless every acknowledged message is
+	     known to have survived the final close.  */
+	  selected = 0;
+	  if (exit_status == SS$_NORMAL)
+	    exit_status = SS$_ABORT;
+	}
+      goto cleanup;
     }
   
-  /* Close the output before deleting any messages, but don't close stdout */
-  if (file)
-    fclose (out);
+  /* Make every output failure visible before changing or deleting mail.  A
+     failed final close invalidates the whole acknowledgement set because the
+     C RTL may have lost buffered data while closing the file. */
+  errno = 0;
+  if (fflush (out) != 0)
+    {
+      fprintf (stderr, "\n%s: couldn't flush final message output\n", program);
+      if (errno != 0)
+	perror ("fflush");
+      if (file)
+	(void) fclose (out);
+      selected = 0;
+      exit_status = SS$_ABORT;
+      goto cleanup;
+    }
+  if (file && fclose (out) != 0)
+    {
+      fprintf (stderr, "\n%s: error closing output file %s\n",
+	       program, file);
+      if (errno != 0)
+	perror ("fclose");
+      selected = 0;
+      exit_status = SS$_ABORT;
+      goto cleanup;
+    }
   
   /* This is where we end up if there was an error while reading or
    * writing a message */
  cleanup:
 
-  /* Decrement the new mail count */
-  if (newmail)
-    {
-      if (verbose)
-	printf ("\nDecrementing new count...");
-      userctx = 0;
-      $SETITM3 (inlst[0], user.length, MAIL$_USER_USERNAME, user.body, 0);
-      $CLRITM3 (inlst[1]);
-      $SETITM3 (outlst[0], sizeof(newcount), MAIL$_USER_NEW_MESSAGES, &newcount, 0);
-      $CLRITM3 (outlst[1]);
-      mail$user_begin (&userctx, nullitm, nullitm);
-      mail$user_get_info (&userctx, inlst, outlst);
-      newcount -= selected;
-      if (newcount < 0)
-	newcount = 0;
-      $SETITM3 (inlst[0], sizeof(newcount), MAIL$_USER_SET_NEW_MESSAGES, &newcount, 0);
-      $CLRITM3 (inlst[1]);
-      mail$user_set_info (&userctx, inlst, nullitm);
-      mail$user_end (&userctx, nullitm, nullitm);
-      if (verbose)
-	printf ("to %d", newcount);
-    }
-  
   /* Now we reprocess the messages and move them out of NEWMAIL
    * MAIL$_MESSAGE_AUTO_NEWMAIL seems to be broken, so we have to do this
    * manually */
-  if (newmail)
+  if (newmail && !peek)
     for (i = 0; i < selected; i++)
       {
 	if (verbose)
@@ -739,6 +863,9 @@ main (argc, argv)
 	$SETITM3 (outlst[0], sizeof(mailflags), MAIL$_MESSAGE_RETURN_FLAGS, &mailflags, 0);
 	$CLRITM3 (outlst[1]);
 	status = mail$message_get (&msgctx, inlst, outlst);
+	record_failure ("mail$message_get flags", status, &exit_status);
+	if (status != SS$_NORMAL)
+	  continue;
 
 #ifdef __GNUC__
 	mailflags.mail$r_fill_0.mail$r_fill_0.mail$v_newmsg = 0;
@@ -748,6 +875,10 @@ main (argc, argv)
 	$SETITM3 (inlst[1], sizeof(mailflags), MAIL$_MESSAGE_FLAGS, &mailflags, 0);
 	$CLRITM3 (inlst[2]);
 	status = mail$message_modify (&msgctx, inlst, nullitm);
+	record_failure ("mail$message_modify", status, &exit_status);
+	if (status != SS$_NORMAL)
+	  continue;
+	newmail_cleared++;
 
 	if (delmsg)
 	  /* Either delete or move */
@@ -755,14 +886,16 @@ main (argc, argv)
 	    if (verbose)
 	      printf ("\nDeleting message id=%d out of NEWMAIL", message[i]);
 	    $CLRITM3 (inlst[1]);
-	    mail$message_delete (&msgctx, inlst, nullitm);
+	    status = mail$message_delete (&msgctx, inlst, nullitm);
+	    record_failure ("mail$message_delete", status, &exit_status);
 	  }
 	else
 	  {
 	    $SETITM3 (inlst[1], 4, MAIL$_MESSAGE_FOLDER, "MAIL", 0);
 	    $SETITM3 (inlst[2], 0, MAIL$_MESSAGE_DELETE, 0, 0);
 	    $CLRITM3 (inlst[3]);
-	    mail$message_copy (&msgctx, inlst, nullitm);
+	    status = mail$message_copy (&msgctx, inlst, nullitm);
+	    record_failure ("mail$message_copy", status, &exit_status);
 	  }
       }
   else if (delmsg)
@@ -774,29 +907,72 @@ main (argc, argv)
 	  
 	  $SETITM3 (inlst[0],sizeof(message[i]), MAIL$_MESSAGE_ID, &message[i], 0);
 	  $CLRITM3 (inlst[1]);
-	  mail$message_delete (&msgctx, inlst, nullitm);
+	  status = mail$message_delete (&msgctx, inlst, nullitm);
+	  record_failure ("mail$message_delete", status, &exit_status);
+	}
+    }
+
+  /* Keep the profile count consistent with the changes that actually
+     succeeded.  In particular, a nonfatal MAIL$ failure above must not make
+     the profile claim that an unchanged message is no longer new. */
+  if (newmail && !peek && newmail_cleared != 0)
+    {
+      if (verbose)
+	printf ("\nDecrementing new count...");
+      userctx = 0;
+      $SETITM3 (inlst[0], user.length, MAIL$_USER_USERNAME, user.body, 0);
+      $CLRITM3 (inlst[1]);
+      $SETITM3 (outlst[0], sizeof(newcount), MAIL$_USER_NEW_MESSAGES,
+		&newcount, 0);
+      $CLRITM3 (outlst[1]);
+      status = mail$user_begin (&userctx, nullitm, nullitm);
+      record_failure ("mail$user_begin", status, &exit_status);
+      if (status == SS$_NORMAL)
+	{
+	  status = mail$user_get_info (&userctx, inlst, outlst);
+	  record_failure ("mail$user_get_info", status, &exit_status);
+	  if (status == SS$_NORMAL)
+	    {
+	      newcount -= newmail_cleared;
+	      if (newcount < 0)
+		newcount = 0;
+	      $SETITM3 (inlst[0], sizeof(newcount),
+			MAIL$_USER_SET_NEW_MESSAGES, &newcount, 0);
+	      $CLRITM3 (inlst[1]);
+	      status = mail$user_set_info (&userctx, inlst, nullitm);
+	      record_failure ("mail$user_set_info", status, &exit_status);
+	      if (verbose && status == SS$_NORMAL)
+		printf ("to %d", newcount);
+	    }
+	  status = mail$user_end (&userctx, nullitm, nullitm);
+	  record_failure ("mail$user_end", status, &exit_status);
 	}
     }
   
   /* We are done with all message processing */
-  mail$message_end (&msgctx, nullitm, nullitm);
+  status = mail$message_end (&msgctx, nullitm, nullitm);
+  record_failure ("mail$message_end", status, &exit_status);
   
   /* Close everything and exit.  Check for autopurge */
   if (autopurge && !keep)
     {
       if (verbose)
 	printf ("\nPurging wastebasket.");
-      mail$mailfile_purge_waste (&filectx, nullitm, nullitm);
+      status = mail$mailfile_purge_waste (&filectx, nullitm, nullitm);
+      record_failure ("mail$mailfile_purge_waste", status, &exit_status);
     }
 
   status = mail$mailfile_close (&filectx, nullitm, nullitm);
+  record_failure ("mail$mailfile_close", status, &exit_status);
   status = mail$mailfile_end (&filectx, nullitm, nullitm);
+  record_failure ("mail$mailfile_end", status, &exit_status);
   
   if (verbose)
     /* printf ("\nAll done!", newcount); */
-    printf ("\nAll done!");	/* ttn */
+    printf (exit_status == SS$_NORMAL
+	    ? "\nAll done!" : "\nFinished with errors.");	/* ttn */
   
-  exit (SS$_NORMAL);
+  exit (exit_status);
 }
 
 /* Exit codes for success and failure.  */

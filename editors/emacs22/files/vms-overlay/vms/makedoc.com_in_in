@@ -58,14 +58,14 @@ $ doit vmstime.obj termcapobj lastfile.obj mallocobj allocaobj widgetobj
 $
 $ doit := 'orig_doit' -a [-.etc]DOC -d 'lispdir'
 $ doit abbrev.elc buff-menu.elc byte-run.elc c-mode.elc
-$ doit files.elc fill.elc
+$ doit files.el fill.elc
 $ doit FLOAT_SUPPORT
 $ doit FRAME_SUPPORT
 $ doit X_WINDOWS_SUPPORT
 $ doit help.elc indent.elc isearch.elc lisp-mode.elc
 $ doit lisp.elc loaddefs.el map-ynp.elc page.elc
 $ doit paragraphs.elc paths.el register.elc replace.elc
-$ doit simple.elc startup.elc subr.elc
+$ doit simple.elc startup.el subr.elc
 $ doit test-mode.elc vc-hooks.elc
 $ doit VMS_SUPPORT
 $ doit MSDOS_SUPPORT
@@ -77,4 +77,3 @@ $!
 $done:
 $ set default 'old'
 $! 'f$verify(save_verif)
-

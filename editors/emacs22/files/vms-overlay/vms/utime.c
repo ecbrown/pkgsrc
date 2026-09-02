@@ -170,8 +170,40 @@ static int settry (char *file, int ignored)
   return 0;
 }
 
+/* ODS-5 quotes a literal delimiter with an odd number of carets.  Searching
+   with strrchr therefore mistakes a quoted ']', '>', or ':' in the leaf name
+   for the directory boundary and can update the wrong file specification.  */
+static int
+vms_char_escaped (start, character)
+     const char *start;
+     const char *character;
+{
+  int carets = 0;
+
+  while (character > start && character[-1] == '^')
+    {
+      carets++;
+      character--;
+    }
+  return carets & 1;
+}
+
+static char *
+last_vms_separator (name)
+     char *name;
+{
+  char *last = 0;
+  char *scan;
+
+  for (scan = name; *scan; scan++)
+    if ((*scan == ']' || *scan == '>' || *scan == ':')
+	&& !vms_char_escaped (name, scan))
+      last = scan;
+  return last;
+}
+
 struct vstring
-{ short length; char string[NAM$C_MAXRSS+1]; };
+{ unsigned short length; char string[NAM$C_MAXRSS+1]; };
 
 
 int utime (char *path, struct utimbuf *timep)
@@ -236,7 +268,7 @@ int utime (char *path, struct utimbuf *timep)
     NAM$C_MAXRSS, DSC$K_DTYPE_T, DSC$K_CLASS_S, (void *) time.string };
   struct vstring result;
   struct dsc$descriptor_s resultdsc = {
-    NAM$C_MAXRSS, DSC$K_DTYPE_VT, DSC$K_CLASS_VS, (void *) result.string };
+    NAM$C_MAXRSS, DSC$K_DTYPE_T, DSC$K_CLASS_S, (void *) result.string };
 
   /*
    * Disallow wildcards in filenames.
@@ -333,11 +365,7 @@ int utime (char *path, struct utimbuf *timep)
   fib.fib$r_acctl_overlay.fib$l_acctl = 0;
 #endif
   fib.fib$l_wcc = 0;
-  leaf = strrchr (result.string, ']');
-  if (!leaf)
-    leaf = strrchr (result.string, '>');
-  if (!leaf)
-    leaf = strrchr (result.string, ':');
+  leaf = last_vms_separator (result.string);
   if (!leaf)
     {
       vaxc$errno = RMS$_FNM;
@@ -448,6 +476,7 @@ int utime (char *path, struct utimbuf *timep)
                      &fibdsc, &filedsc, &result.length, &resultdsc, &atrlst, 0);
   chkstat (status, -1);
   chkstat (iosb.status, -1);
+  result.string[result.length] = 0;
   Dprintf ("sys$qiow re-accessed file `%s'\n", result.string);
   if (timep) {
 #ifdef __GNUC__  
@@ -458,7 +487,10 @@ int utime (char *path, struct utimbuf *timep)
 #endif
   }
   else
-    sys$gettim(&Fat.revise);
+    {
+      status = sys$gettim(&Fat.revise);
+      chkstat (status, -1);
+    }
   
 #ifdef UTIME_DEBUG
   status = sys$asctim (&time.length, &timedsc, &Fat.revise, 0);
@@ -477,7 +509,7 @@ int utime (char *path, struct utimbuf *timep)
    */
   status = sys$dassgn (chan);
   chan = 0;
-  chkstat (status, 0);
+  chkstat (status, -1);
   return 0;
 }
 

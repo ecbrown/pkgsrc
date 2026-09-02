@@ -57,7 +57,7 @@
    Works with DSC$K_CLASS_VS descriptors */
 struct Vstring
 {
-  short length;
+  unsigned short length;
   char body[NAM$C_MAXRSS+1];
 };
 
@@ -69,16 +69,24 @@ char **glob (try)
   char **list;                  /* List of matches */
   long sz;                      /* Allocated size of list */
   int nfiles;                   /* Number of matches */
+  size_t try_length;
   static struct Vstring file;   /* Current/last match */
   static $DESCRIPTOR(sdd,"SYS$DISK:[]*.*"); /* Default file name */
   static struct dsc$descriptor sid = /* Input descriptor */
     { 0, DSC$K_DTYPE_T, DSC$K_CLASS_S, NULL };
   static struct dsc$descriptor sod = /* Output descriptor */
-    { sizeof(file), DSC$K_DTYPE_VT, DSC$K_CLASS_VS, (void *) &file };
+    { NAM$C_MAXRSS, DSC$K_DTYPE_VT, DSC$K_CLASS_VS, (void *) &file };
   
   /* Initialize input descriptor */
-  sid.dsc$w_length  = strlen(try);
-  sid.dsc$a_pointer = malloc ((1+strlen(try)) * sizeof(char));
+  try_length = strlen (try);
+  if (try_length > NAM$C_MAXRSS)
+    {
+      errno = EVMSERR;
+      vaxc$errno = RMS$_FNM;
+      return NULL;
+    }
+  sid.dsc$w_length  = try_length;
+  sid.dsc$a_pointer = malloc ((1 + try_length) * sizeof(char));
   if (!sid.dsc$a_pointer)
     {
       errno = ENOMEM;

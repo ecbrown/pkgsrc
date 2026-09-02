@@ -669,7 +669,7 @@ otherobj= $(termcapobj) lastfile.o $(mallocobj) $(allocaobj) $(widgetobj) $(LIBO
 #endif
 
 #ifdef VMS
-#define VMS_SUPPORT ${lispsource}vmsproc.elc ${lispsource}vms-patch.elc
+#define VMS_SUPPORT ${lispsource}vmsproc.el ${lispsource}vms-patch.el
 #else
 #define VMS_SUPPORT
 #endif
@@ -736,7 +736,7 @@ lisp= \
 	${lispsource}emacs-lisp/lisp.elc \
 	${lispsource}env.elc \
 	${lispsource}faces.elc \
-	${lispsource}files.elc \
+	${lispsource}files.el \
 	${lispsource}format.elc \
 	${lispsource}facemenu.elc \
 	MOUSE_SUPPORT \
@@ -794,7 +794,7 @@ lisp= \
 	${lispsource}register.elc \
 	${lispsource}replace.elc \
 	${lispsource}simple.elc \
-	${lispsource}startup.elc \
+	${lispsource}startup.el \
 	${lispsource}subr.elc \
 	${lispsource}term/tty-colors.elc \
 	${lispsource}font-core.elc \
@@ -835,7 +835,7 @@ shortlisp= \
 	../lisp/emacs-lisp/lisp.elc \
 	../lisp/facemenu.elc \
 	../lisp/faces.elc \
-	../lisp/files.elc \
+	../lisp/files.el \
 	../lisp/emacs-lisp/float-sup.elc \
 	../lisp/format.elc \
 	../lisp/frame.elc \
@@ -892,7 +892,7 @@ shortlisp= \
 	../lisp/register.elc \
 	../lisp/replace.elc \
 	../lisp/simple.elc \
-	../lisp/startup.elc \
+	../lisp/startup.el \
 	../lisp/subr.elc \
 	../lisp/term/tty-colors.elc \
 	../lisp/font-core.elc \
@@ -918,7 +918,7 @@ shortlisp= \
    for the sake of systems which can''t handle large ones.  */
 SOME_MACHINE_LISP = ${dotdot}/lisp/mouse.elc \
   ${dotdot}/lisp/select.elc ${dotdot}/lisp/scroll-bar.elc \
-  ${dotdot}/lisp/vmsproc.elc ${dotdot}/lisp/vms-patch.elc \
+  ${dotdot}/lisp/vmsproc.el ${dotdot}/lisp/vms-patch.el \
   ${dotdot}/lisp/ls-lisp.elc ${dotdot}/lisp/dos-fns.elc \
   ${dotdot}/lisp/w32-fns.elc ${dotdot}/lisp/dos-w32.elc \
   ${dotdot}/lisp/disp-table.elc ${dotdot}/lisp/dos-vars.elc \

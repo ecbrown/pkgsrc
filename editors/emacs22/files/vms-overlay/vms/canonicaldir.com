@@ -29,7 +29,7 @@ $   __dir = ""
 $   if p1 - "::" .nes. p1
 $    then
 $     __node = f$extract(0, f$locate("::", p1) + 2, p1)
-$     p1 = p1 - __node)
+$     p1 = p1 - __node
 $    else
 $!     __node := 'f$getsyi("NODENAME")'::
 $	 __node :=

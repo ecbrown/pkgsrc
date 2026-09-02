@@ -125,6 +125,7 @@ $ say "If you omit the CONFIGURATION, ''progname_fn' will find out by itself."
 $ say "--WITH-X                 Support the X Window System."
 $ say "--WITH-X=NO              Don't support X."
 $ say "--WITH-X-TOOLKIT         Use an X toolkit."
+$ say "--WITH-X-TOOLKIT=MOTIF   Use the DECwindows Motif toolkit."
 $ say "--WITH-X-TOOLKIT=NO      Don't use an X toolkit."
 $ say "--WITH-GCC               Use GCC to compile Emacs."
 $ say "--WITH-GCC=NO            Don't use GCC to compile Emacs."
@@ -309,23 +310,16 @@ $	      if f$extract(0,f$length(valu),"ATHENA") .eqs. valu
 $	       then
 $	        val = "athena"
 $	       else
-$!		if f$extract(0,f$length(valu),"MOTIF") .eqs. valu
-$!		 then
-$!		  val = "motif"
-$!		 else
-$!		  if f$extract(0,f$length(valu),"OPEN-LOOK") .eqs. valu
-$!		   then
-$!		    val = "open-look"
-$		   else
-$!		    sayerr "''progname': the `--''opt'' option is supposed to have a value."
-$!		    sayerr "which is `yes', `no', `lucid', `athena', `motif' or `open-look'.
+$		if f$extract(0,f$length(valu),"MOTIF") .eqs. valu
+$		 then
+$		  val = "motif"
+$		 else
 $		    sayerr "''progname': the `--''opt'' option is supposed to have a value."
-$		    sayerr "which is `yes', `no', `lucid' or `athena'.
+$		    sayerr "which is `yes', `no', `lucid', `athena' or `motif'.
 $		    sayerr "Currently, `yes', `athena' and `lucid' are synonyms.'
 $		    gosub short_usage
 $		    exit 0
-$!		   endif
-$!		 endif
+$		 endif
 $	       endif
 $	     endif
 $	   endif
@@ -687,7 +681,7 @@ $conf_loop:
 $ tmp = f$search("''sdir'''opsystmp'%*.H")
 $ if tmp .nes. ""
 $  then
-$   tmp = f$parse(tmp,,,"NAME") - f$edit(opsystmp,"UPCASE")
+$   tmp = f$edit(f$parse(tmp,,,"NAME"),"UPCASE") - f$edit(opsystmp,"UPCASE")
 $   test_major = f$element(0,"-",tmp)
 $   test_minor = f$element(1,"-",tmp)
 $   dummy := 'tmp		! tmp
@@ -719,6 +713,8 @@ $ on severe_error then goto ac_bail_out
 $ on control_y then goto ac_bail_out
 $ goto ac_passed_error_routines
 $ac_bail_out:
+$ ac_bail_status = $status
+$ set noon
 $ set default 'ac_DCL_original_directory'
 $ set message 'ac_DCL_message'
 $!#
@@ -757,7 +753,7 @@ $ call VMS_DELR "conftest*.*"
 $
 $ call VMS_DELR "confdefs*.*"
 $
-$ exit 1 + 0 * f$verify(ac_DCL_verify)
+$ exit ac_bail_status + 0 * f$verify(ac_DCL_verify)
 $ac_passed_error_routines:
 $
 $!# Save the original args if we used an alternate arg parser.
@@ -5063,8 +5059,11 @@ $ write config_status_file "$! This directory was configured as follows,"
 $ write config_status_file "$! on host "+f$getsyi("NODENAME")+":"
 $ write config_status_file "$!"
 $ __tmp_p = f$env("PROCEDURE")
-$ __tmp_p = f$parse(__tmp_p,,,"DEVICE")+f$parse(__tmp_p,,,"DIRECTORY")+ -
-	f$parse(__tmp_p,,,"NAME")+f$parse(__tmp_p,,,"TYPE")
+$! CONFIG.STATUS already has to be run from the configured source directory:
+$! all of the files it rewrites are relative to that directory.  Recording the
+$! absolute procedure name needlessly pushes the saved recheck command past
+$! DCL's command-element limit on deep pkgsrc staging paths.
+$ __tmp_p = f$parse(__tmp_p,,,"NAME")+f$parse(__tmp_p,,,"TYPE")
 $ write config_status_file "$! @"+__tmp_p+" "+configure_args
 $ write config_status_file "$"
 $ write config_status_file "$ set symbol/verb/scope=(noglobal,nolocal)"
@@ -5477,10 +5476,11 @@ $ write config_status_file "$   set noon"
 $ write config_status_file "$   ac_tmp = f$parse(ac_file,""*.*;*"")"
 $ write config_status_file "$!   if f$search(ac_tmp) .nes. """" then delete/nolog 'ac_tmp'"
 $ write config_status_file "$   ac_input_file_type = f$parse(ac_file,,,""TYPE"")"
-$ write config_status_file "$   ac_input_file := 'f$element(0,"";"",ac_file)'"
+$ write config_status_file "$   ac_input_file_type_uc = f$edit(ac_input_file_type,""UPCASE"")"
+$ write config_status_file "$   ac_input_file = f$element(0,"";"",ac_file)"
 $ write config_status_file "$   ac_input_file_len = f$length(ac_input_file)-f$length(ac_input_file_type)"
 $ write config_status_file "$   !sh sym ac_input_file*"
-$ write config_status_file "$   if f$extract(ac_input_file_len,f$length(ac_input_file_type),ac_input_file) .nes. ac_input_file_type then ac_input_file_len = f$length(ac_input_file)"
+$ write config_status_file "$   if f$edit(f$extract(ac_input_file_len,f$length(ac_input_file_type),ac_input_file),""UPCASE"") .nes. ac_input_file_type_uc then ac_input_file_len = f$length(ac_input_file)"
 $ write config_status_file "$   ac_input_file = f$extract(0,ac_input_file_len,ac_input_file)"
 $ write config_status_file "$   ac_input_file_dir = f$extract(0,ac_input_file_len-f$length(f$parse(ac_input_file,,,""NAME"")),ac_input_file)"
 $ write config_status_file "$   ac_input_file = ac_input_file-ac_input_file_dir"
@@ -5488,14 +5488,14 @@ $ write config_status_file "$   !sh sym ac_input_file*"
 $ write config_status_file "$   !set verify"
 $ write config_status_file "$   comment_str=""Generated automatically from ""+ac_input_file+ac_input_file_type+"" by configure."""
 $ write config_status_file "$   open/write config_status_dest 'ac_file'"
-$ write config_status_file "$   if ac_input_file_type .eqs. "".C"" -"
-$ write config_status_file "      .or. ac_input_file_type .eqs. "".H"" -"
-$ write config_status_file "      .or. ac_input_file_type .eqs. "".CC"" -"
-$ write config_status_file "      .or. ac_input_file_type .eqs. "".MAR"""
+$ write config_status_file "$   if ac_input_file_type_uc .eqs. "".C"" -"
+$ write config_status_file "      .or. ac_input_file_type_uc .eqs. "".H"" -"
+$ write config_status_file "      .or. ac_input_file_type_uc .eqs. "".CC"" -"
+$ write config_status_file "      .or. ac_input_file_type_uc .eqs. "".MAR"""
 $ write config_status_file "$    then"
 $ write config_status_file "$     write config_status_dest ""/* "",comment_str,"" */"""
 $ write config_status_file "$    else"
-$ write config_status_file "$     if ac_input_file_type .eqs. "".COM"""
+$ write config_status_file "$     if ac_input_file_type_uc .eqs. "".COM"""
 $ write config_status_file "$      then"
 $ write config_status_file "$       write config_status_dest ""$! "",comment_str"
 $ write config_status_file "$      else

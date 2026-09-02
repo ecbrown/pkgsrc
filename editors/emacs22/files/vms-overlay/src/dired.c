@@ -1054,10 +1054,37 @@ which see.  */)
 #endif	/* BSD4_2 (or BSD4_3) */
   /* Shut up GCC warnings in FIXNUM_OVERFLOW_P below.  */
 #ifdef VMS
-  /* The OpenVMS C RTL exposes a three-word file ID and a device-name
-     pointer.  Lisp's historical representation retains the low 32 bits.  */
-  ino = ((EMACS_INT) s.st_ino[1] << 16) | s.st_ino[2];
-  dev = (unsigned char) *s.st_dev;
+  {
+    unsigned long hash;
+    int i;
+    const unsigned char *device;
+
+    /* The legacy C RTL exposes a three-word FID and a pointer-valued device
+       name, while file-attributes historically returns scalar identities.
+       These hashes are therefore best-effort Lisp attributes, not an RMS
+       identity test.  Hash every available component rather than dropping a
+       FID word and all but the first device byte.  */
+    hash = 2166136261UL;
+    for (i = 0; i < 3; i++)
+      {
+	unsigned short fid_word = (unsigned short) s.st_ino[i];
+	hash = (hash ^ (fid_word & 0xff)) * 16777619UL;
+	hash = (hash ^ ((fid_word >> 8) & 0xff)) * 16777619UL;
+      }
+    ino = (EMACS_INT) (hash & 0x7fffffffUL);
+
+    hash = 2166136261UL;
+    device = (const unsigned char *) s.st_dev;
+    if (device)
+      while (*device)
+	{
+	  unsigned char c = *device++;
+	  if (c >= 'a' && c <= 'z')
+	    c -= 'a' - 'A';
+	  hash = (hash ^ c) * 16777619UL;
+	}
+    dev = (EMACS_INT) (hash & 0x7fffffffUL);
+  }
 #elif defined (WINDOWSNT)
   {
     /* The bit-shuffling we do in w32.c:stat can turn on the MSB, which

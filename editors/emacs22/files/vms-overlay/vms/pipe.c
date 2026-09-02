@@ -69,11 +69,12 @@ struct PIPE
   struct PIPE *prev;            /* previous pipe in the chain */
   struct PIPE *self;            /* self reference */
   int mode;                     /* pipe I/O mode (read or write) */
-  long status;                  /* subprocess completion status */
-  struct IOSB iosb;             /* pipe I/O status block */
+  unsigned int status;          /* subprocess completion status */
+  EMACS_IOSB iosb;              /* subprocess completion wait block */
   FILE *file;                   /* pipe file structure */
-  int pid;                      /* pipe process id */
-  short chan;                   /* pipe channel */
+  unsigned int pid;             /* pipe process id */
+  unsigned short chan;          /* pipe channel */
+  int file_closed;              /* the C stream is no longer usable */
   jmp_buf jmpbuf;		/* jump buffer, if needed */
   int has_jmpbuf;		/* flag */
 };
@@ -89,37 +90,47 @@ static unsigned char evf = 1;
  *   which were started via popen().
  * Since
  */
-static int
+static void
 pwait (status)
-  int status;
+  unsigned int *status;
 {
-  struct IOSB iosb;
+  EMACS_IOSB iosb = {0};
   struct PIPE *this;
-  int ret = 0;
+  int service_status;
 
+  (void) status;
   this = phead;
   while (this)
     {
       if (this->self != this)
-        {
-	  ret = -1;
-	  break;
-	}
-      if (!this->iosb.status)
+	break;
+      if (!this->file_closed)
 	{
-	  fflush (this->file);
+	  (void) fflush (this->file);
 	  if (this->mode == O_WRONLY)
-	    sys$qio (0, this->chan, IO$_WRITEOF, &iosb,
-		     0, 0, 0, 0, 0, 0, 0, 0);
-	  fclose (this->file);
-	  sys$synch (evf, &this->iosb);
+	    {
+	      /* The IOSB is stack storage, so the EOF request must complete
+		 before this iteration can leave its scope.  */
+	      service_status = sys$qiow (0, this->chan, IO$_WRITEOF, &iosb,
+				   0, 0, 0, 0, 0, 0, 0, 0);
+	      (void) service_status;
+	    }
+	  (void) fclose (this->file);
+	  this->file_closed = 1;
 	}
-      else
-	fclose(this->file);
-      sys$dassgn (this->chan);
+      if (!this->iosb.iosb$w_status)
+	{
+	  service_status = sys$synch (evf, &this->iosb);
+	  (void) service_status;
+	}
+      if (this->chan)
+	{
+	  service_status = sys$dassgn (this->chan);
+	  (void) service_status;
+	  this->chan = 0;
+	}
       this = this->next;
     }
-  return ret;
 }
 
 /*
@@ -127,16 +138,18 @@ pwait (status)
  * Return codes
  * >0  VMS exit status of process
  *  0  success, pipe was closed
- * -1  stream not found in list of pipes
+ * -1  stream not found in list of pipes, or pipe close failed
  * -2  memory corruption detected
  */
 int
 pclose (stream)
   FILE *stream;
 {
-  struct IOSB iosb;
+  EMACS_IOSB iosb = {0};
   struct PIPE *this = phead;
-  long child_status;
+  unsigned int child_status;
+  int io_error = 0;
+  int service_status;
 
   while (this && this->self == this && this->file != stream)
     this = this->next;
@@ -148,18 +161,57 @@ pclose (stream)
     return -2;
 
   /* Flush the I/O buffer and wait for the close to complete */
-  if (!this->iosb.status)
+  if (!this->file_closed)
     {
-      fflush (this->file);
+      if (fflush (this->file) == EOF)
+	io_error = 1;
       if (this->mode == O_WRONLY)
-	sys$qio (0, this->chan, IO$_WRITEOF, &iosb,
-		 0, 0, 0, 0, 0, 0, 0, 0);
-      fclose (this->file);
-      sys$synch (evf, &this->iosb);
+	{
+	  service_status = sys$qiow (0, this->chan, IO$_WRITEOF, &iosb,
+				 0, 0, 0, 0, 0, 0, 0, 0);
+	  if (!(service_status & STS$M_SUCCESS)
+	      || !(iosb.iosb$w_status & STS$M_SUCCESS))
+	    {
+	      vaxc$errno = (service_status & STS$M_SUCCESS)
+		? iosb.iosb$w_status : service_status;
+	      errno = EVMSERR;
+	      io_error = 1;
+	    }
+	}
+      if (fclose (this->file) == EOF)
+	io_error = 1;
+      this->file_closed = 1;
     }
-  else
-    fclose (this->file);
-  sys$dassgn (this->chan);
+
+  /* A successful SYS$SYNCH and a nonzero completion word together prove
+     that PDONE has finished using THIS.  On failure, retain the object in the
+     pipe list so a later pclose or the image exit handler can finish waiting;
+     freeing it here would leave the outstanding AST with a dangling pointer. */
+  if (!this->iosb.iosb$w_status)
+    {
+      service_status = sys$synch (evf, &this->iosb);
+      if (!(service_status & STS$M_SUCCESS)
+	  || !this->iosb.iosb$w_status)
+	{
+	  vaxc$errno = (service_status & STS$M_SUCCESS)
+	    ? SS$_ABORT : service_status;
+	  errno = EVMSERR;
+	  return -1;
+	}
+    }
+
+  if (this->chan)
+    {
+	  service_status = sys$dassgn (this->chan);
+	  if (!(service_status & STS$M_SUCCESS))
+	    {
+	      vaxc$errno = service_status;
+	      errno = EVMSERR;
+	      io_error = 1;
+	    }
+	  else
+	    this->chan = 0;
+    }
 
   /* Remove `this' from the list of pipes and free its storage */
   if (this == ptail)
@@ -171,10 +223,19 @@ pclose (stream)
   if (this->next)
     this->next->prev = this->prev;
   child_status = this->status;
+  this->self = 0;
   free (this);
 
-  if (!(child_status & STS$M_SUCCESS))
+  if (child_status == 0)
+    {
+      vaxc$errno = SS$_ABORT;
+      errno = EVMSERR;
+      return -1;
+    }
+  else if (!(child_status & STS$M_SUCCESS))
     return child_status;
+  else if (io_error)
+    return -1;
   else
     return 0;
 }
@@ -189,31 +250,68 @@ void
 pdone (this)
   struct PIPE *this;
 {
-  struct IOSB iosb;
-
   if (this->self != this)
     return;
-  this->iosb.status = 1;
   this->pid  = 0;
   if (this->has_jmpbuf)
     {
       this->has_jmpbuf = 0;
+      /* Publish completion only after every other access through the AST
+         parameter.  A waiter may free THIS as soon as this word is nonzero. */
+      this->iosb.iosb$w_status = SS$_NORMAL;
       longjmp (this->jmpbuf, 1);
     }
+  this->iosb.iosb$w_status = SS$_NORMAL;
 }
 
 /* A failed popen setup can occur after LIB$SPAWN has installed PDONE as an
    AST.  Do not release THIS until that callback has either already run or
    has observed completion of a requested child deletion.  */
-static void
+static int
 terminate_pipe_process (this)
   struct PIPE *this;
 {
-  if (!this->iosb.status)
+  unsigned int pid;
+  int service_status;
+
+  if (this->iosb.iosb$w_status)
+    return 1;
+  pid = this->pid;
+  if (!pid)
+    return 0;
+
+  /* PDONE can run between the test above and SYS$DELPRC.  Pass a captured
+     nonzero PID: passing &this->pid after PDONE has cleared it would turn the
+     request into a zero-PID deletion, which denotes the current process. */
+  service_status = sys$delprc (&pid, 0);
+  if (!(service_status & STS$M_SUCCESS))
+    return this->iosb.iosb$w_status != 0;
+
+  service_status = sys$synch (evf, &this->iosb);
+  if (!(service_status & STS$M_SUCCESS))
+    return 0;
+  return this->iosb.iosb$w_status != 0;
+}
+
+/* Tear down resources after LIB$SPAWN has accepted PDONE and THIS as its
+   completion AST.  If completion cannot be proved, deliberately retain THIS:
+   the process will reclaim the rare setup-error leak, whereas freeing it
+   would permit a later AST to corrupt memory.  */
+static void
+discard_spawned_pipe (this)
+  struct PIPE *this;
+{
+  int completed = terminate_pipe_process (this);
+
+  if (this->chan)
     {
-      if (this->pid)
-	sys$delprc (&this->pid, 0);
-      sys$synch (evf, &this->iosb);
+      (void) sys$dassgn (this->chan);
+      this->chan = 0;
+    }
+  if (completed)
+    {
+      this->self = 0;
+      free (this);
     }
 }
 
@@ -241,6 +339,7 @@ pipe_set_fd_jmpbuf (fd, jmpbuf)
   return 1;
 }
 
+int
 pipe_unset_fd_jmpbuf (fd)
      int fd;
 {
@@ -262,7 +361,7 @@ static struct EXHCB pexhcb = { 0, pwait, 1, &pexhcb.exh$l_status, 0 };
 
 struct Vstring
 {
-  short length;
+  unsigned short length;
   char body[NAM$C_MAXRSS+1];
 };
 
@@ -288,14 +387,14 @@ popen (cmd, mode)
 #pragma message disable ADDRCONSTEXT
 #endif
   int i, status, flags, mbxsize;
-  struct IOSB iosb;
+  EMACS_IOSB iosb = {0};
   struct dsc$descriptor_s cmddsc, mbxdsc;
   struct Vstring mbxname = { sizeof(mbxname.body) };
-  struct itm$list3 mbxlist[2] = {
-    { sizeof(mbxname.body)-1, DVI$_DEVNAM, &mbxname.body, (size_t *) &mbxname.length },
+  EMACS_ILE3 mbxlist[2] = {
+    { sizeof(mbxname.body)-1, DVI$_DEVNAM, mbxname.body, &mbxname.length },
     { 0, 0, 0, 0} };
-  struct itm$list3 syilist[2] = {
-    { sizeof(mbxsize), SYI$_MAXBUF, &mbxsize, (size_t *) 0 },
+  EMACS_ILE3 syilist[2] = {
+    { sizeof(mbxsize), SYI$_MAXBUF, &mbxsize, 0 },
     { 0, 0, 0, 0} };
   static int noExitHandler = 1;
   struct PIPE *this;
@@ -327,9 +426,11 @@ popen (cmd, mode)
 
   /* Use the smaller of SYI$_MAXBUF and 2048 for the mailbox size */
   status = sys$getsyiw(0, 0, 0, syilist, &iosb, 0, 0, 0);
-  if (!(status & STS$M_SUCCESS) || !(iosb.status & STS$M_SUCCESS))
+  if (!(status & STS$M_SUCCESS)
+      || !(iosb.iosb$w_status & STS$M_SUCCESS))
     {
-      vaxc$errno = (status & STS$M_SUCCESS) ? iosb.status : status;
+      vaxc$errno = (status & STS$M_SUCCESS)
+	? iosb.iosb$w_status : status;
       errno = EVMSERR;
       free (this);
       perror ("popen, $GETSYIW failure for SYI$_MAXBUF");
@@ -350,10 +451,12 @@ popen (cmd, mode)
     }
 
   /* Retrieve mailbox name, use for fopen */
-  status = sys$getdviw (0, this->chan, 0, &mbxlist, &iosb, 0, 0, 0);
-  if (!(status & STS$M_SUCCESS) || !(iosb.status & STS$M_SUCCESS))
+  status = sys$getdviw (0, this->chan, 0, mbxlist, &iosb, 0, 0, 0);
+  if (!(status & STS$M_SUCCESS)
+      || !(iosb.iosb$w_status & STS$M_SUCCESS))
     {
-      vaxc$errno = (status & STS$M_SUCCESS) ? iosb.status : status;
+      vaxc$errno = (status & STS$M_SUCCESS)
+	? iosb.iosb$w_status : status;
       errno = EVMSERR;
       sys$dassgn (this->chan);
       free (this);
@@ -403,9 +506,7 @@ popen (cmd, mode)
         {
           vaxc$errno = status;
           errno = EVMSERR;
-          terminate_pipe_process (this);
-          sys$dassgn (this->chan);
-          free (this);
+	  discard_spawned_pipe (this);
           perror("popen, $DCLEXH failure");
           return NULL;
         }
@@ -421,9 +522,7 @@ popen (cmd, mode)
   /* Paranoia, check for failure again */
   if (!this->file)
     {
-      terminate_pipe_process (this);
-      sys$dassgn (this->chan);
-      free (this);
+      discard_spawned_pipe (this);
       perror ("popen, fopen failure");
       return NULL;
     }

@@ -764,10 +764,7 @@
 ;;;0;;	!	$(INSTALL_PROGRAM) [.vms]emacs_vue.com $(vuelibdir)emacs_vue-$(version_us).com /log
 ;;;0;;	! - if .not.result then purge $(vuelibdir)emacs_vue.com /log
 ;;;0;;	@ !
-;;;0;;	if f$search("$(mandir)gnu.hlb") .eqs. "" then -
-;;;0;;		library/create/help $(mandir)gnu.hlb
-;;;0;;	set file/prot=(w:r) $(mandir)gnu.hlb
-;;;0;;	-@ @$(vmssrcdir)loop_args page "emacs etags" " " "library/replace $(mandir)gnu.hlb @srcdir_dev@[@srcdir_dir@.ETC]'page'.hlp /log" ";" verbose
+;;;0;;	@ ! GNU.HLB is shared; retain EMACS.HLP without modifying that library.
 ;;;0;;
 ;;;0;;install-doc : mkdir
 ;;;0;;	sdir=f$environment("DEFAULT")-"]"+".ETC]"
@@ -808,7 +805,6 @@
 ;;;0;;	@ line8 = "if dest - ""@datadir_dev@[@datadir_dir@.EMACS.$(version_us)"" .nes. dest then @$(vmssrcdir)recurdel @datadir_dev@[@datadir_dir@.EMACS]$(version_us).DIR"
 ;;;0;;	@ @$(vmssrcdir)loop_args dir "$(lispdir),$(etcdir)" "," "'line1';'line2';'line3';'line4';'line5';'line6';'line7';'line8'" ";" verbose
 ;;;0;;	- delete $(infodir)cl*.*;*,emacs*.*;*,forms*.*;*,info*.*;*,vip*.*;*
-;;;0;;	- library/delete $(mandir)gnu.hlb emacs,etags
 ;;;0;;	- delete $(bindir)emacs-$(version_us).exe;*,.dump;*
 ;;;0;;
 ;;;0;;

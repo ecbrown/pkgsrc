@@ -276,7 +276,7 @@ STARTFILES = START_FILES
 
 #ifdef USE_X_TOOLKIT
 #define USE_@X_TOOLKIT_TYPE@
-TOOLKIT_DEFINES = -DUSE_@X_TOOLKIT_TYPE@
+TOOLKIT_DEFINES = ,"USE_@X_TOOLKIT_TYPE@"
 #else
 TOOLKIT_DEFINES =
 #endif
@@ -294,9 +294,9 @@ TOOLKIT_DEFINES =
 
 /* C_SWITCH_X_SITE must come before C_SWITCH_X_MACHINE and C_SWITCH_X_SYSTEM
    since it may have -I options that should override those two.  */
-ALL_CFLAGS=/NAME=SHOR/EXTERN_M=STRICT_REFD/def=("emacs",HAVE_CONFIG_H,XTSHELLSTRINGS,XTSTRINGDEFINES 'extra_defs')-
+ALL_CFLAGS=/NAME=SHOR/EXTERN_M=STRICT_REFD/def=("emacs",HAVE_CONFIG_H,XTSHELLSTRINGS,XTSTRINGDEFINES$(TOOLKIT_DEFINES) 'extra_defs')-
 /inclu=(local_includes)-
- $(TOOLKIT_DEFINES) $(MYCPPFLAG)C_SWITCH_MACHINE C_SWITCH_SYSTEM C_SWITCH_SITE C_SWITCH_X_SITE C_SWITCH_X_MACHINE C_SWITCH_X_SYSTEM $(CFLAGS) C_DEBUG_SWITCH
+ $(MYCPPFLAG)C_SWITCH_MACHINE C_SWITCH_SYSTEM C_SWITCH_SITE C_SWITCH_X_SITE C_SWITCH_X_MACHINE C_SWITCH_X_SYSTEM $(CFLAGS) C_DEBUG_SWITCH
 .c.obj : 
 	$(CC) $(CC_COMPILE_SWITCH) $(CPPFLAGS) $(ALL_CFLAGS) $< -
 		/obj = sys$disk:[]$*.obj
@@ -393,7 +393,7 @@ LIBXTR6 =
 #endif
 
 #ifndef LIBXMU
-#define LIBXMU XmuLIBSHR/SHARE
+#define LIBXMU SYS$SHARE:DECW$XmuLIBSHRR5.EXE/SHARE
 #endif
 
 #ifdef LIBXT_STATIC
@@ -663,7 +663,7 @@ otherobj= $(termcapobj), lastfile.obj, $(mallocobj) $(allocaobj) $(widgetobj) $(
 #endif
 
 #ifdef VMS
-#define VMS_SUPPORT $(lispsource)vmsproc.elc $(lispsource)vms-patch.elc
+#define VMS_SUPPORT $(lispsource)vmsproc.el $(lispsource)vms-patch.el
 #else
 #define VMS_SUPPORT
 #endif
@@ -730,7 +730,7 @@ lisp= \
 	$(lispsourceemacslisp)lisp.elc \
 	$(lispsource)env.elc \
 	$(lispsource)faces.elc \
-	$(lispsource)files.elc \
+	$(lispsource)files.el \
 	$(lispsource)format.elc \
 	$(lispsource)facemenu.elc \
 	MOUSE_SUPPORT \
@@ -788,7 +788,7 @@ lisp= \
 	$(lispsource)register.elc \
 	$(lispsource)replace.elc \
 	$(lispsource)simple.elc \
-	$(lispsource)startup.elc \
+	$(lispsource)startup.el \
 	$(lispsource)subr.elc \
 	$(lispsourceterm)tty-colors.elc \
 	$(lispsource)font-core.elc \
@@ -829,7 +829,7 @@ shortlisp1 = 	[-.lisp]cus-start.elc \
 	[-.lisp.emacs-lisp]lisp.elc
 shortlisp2 = 	[-.lisp]facemenu.elc \
 	[-.lisp]faces.elc \
-	[-.lisp]files.elc \
+	[-.lisp]files.el \
 	[-.lisp.emacs-lisp]float-sup.elc \
 	[-.lisp]format.elc
 shortlisp3 = 	[-.lisp]frame.elc \
@@ -886,7 +886,7 @@ shortlisp13 = 	[-.lisp]paths.el \
 	[-.lisp]register.elc \
 	[-.lisp]replace.elc \
 	[-.lisp]simple.elc \
-	[-.lisp]startup.elc
+	[-.lisp]startup.el
 shortlisp14 = 	[-.lisp]subr.elc \
 	[-.lisp.term]tty-colors.elc \
 	[-.lisp]font-core.elc \
@@ -912,7 +912,7 @@ shortlisp17 = 	[-.lisp]window.elc \
    for the sake of systems which can't handle large ones.  */
 machine_lisp0 = $(dotdot)/lisp/mouse.elc \
   $(dotdot)/lisp/select.elc $(dotdot)/lisp/scroll-bar.elc \
-  $(dotdot)/lisp/vmsproc.elc $(dotdot)/lisp/vms-patch.elc
+  $(dotdot)/lisp/vmsproc.el $(dotdot)/lisp/vms-patch.el
 machine_lisp1 = $(dotdot)/lisp/ls-lisp.elc \
   $(dotdot)/lisp/dos-fns.elc $(dotdot)/lisp/w32-fns.elc \
   $(dotdot)/lisp/dos-w32.elc $(dotdot)/lisp/disp-table.elc
@@ -1028,7 +1028,7 @@ makedoc_lisp = $(makedoc) -a $(etc)DOC -d $(lispsource)
 
 ! zonk OBJECTS_SYSTEM and OBJECTS_MACHINE for now --ttn
 ! $(etc)DOC : $(libsrc)make-docfile.exe $(obj) $(lisp) OBJECTS_SYSTEM OBJECTS_MACHINE
-$(etc)DOC : $(lispsource)mouse.elc $(lispsource)select.elc $(lispsource)scroll-bar.elc $(lispsource)vmsproc.elc $(lispsource)vms-patch.elc
+$(etc)DOC : $(lispsource)mouse.elc $(lispsource)select.elc $(lispsource)scroll-bar.elc $(lispsource)vmsproc.el $(lispsource)vms-patch.el
 $(etc)DOC : $(lispsource)ls-lisp.elc $(lispsource)dos-fns.elc $(lispsource)w32-fns.elc $(lispsource)dos-w32.elc $(lispsource)disp-table.elc
 $(etc)DOC : $(lispsource)dos-vars.elc $(lispsource)tooltip.elc $(lispsource)image.elc $(lispsource)fringe.elc $(lispsource)dnd.elc
 $(etc)DOC : $(lispsource)mwheel.elc $(lispsource)tool-bar.elc $(lispsource)x-dnd.elc $(lispsourceinternational)ccl.elc $(lispsourceinternational)codepage.elc
@@ -1187,6 +1187,7 @@ $(libsrc)make-docfile.exe :
 	@$(vmsdir)loop_args lib "$(LIBES8)" " " "write foo lib" ";"
 	@$(vmsdir)loop_args lib "$(LIBES9)" " " "write foo lib" ";"
 	@$(vmsdir)loop_args lib "$(LIBES10)" " " "write foo lib" ";"
+	write foo "SYS$SHARE:DECC$SHR.EXE/SHAREABLE/SELECTIVE_SEARCH"
 	close foo
 	purge [-.vms]temacs.opt
 	- if f$search("[-.vms]temacs.opt_com.*") .nes. "" then delete [-.vms]temacs.opt_com$(dotstar)
@@ -1216,6 +1217,7 @@ stamp-oldxmenu : $(OLDXMENU) [-.src]$(OLDXMENU)
 
 #ifdef USE_X_TOOLKIT
 $(OLDXMENU) : really-lwlib
+	@ ! The really-lwlib child MMS invocation creates or refreshes this library.
 
 /* Encode the values of these two macros in Make variables,
    so we can use $(...) to substitute their values within "...".  */
@@ -1226,15 +1228,11 @@ C_SWITCH_X_SITE_1 = C_SWITCH_X_SITE
 C_SWITCH_X_MACHINE_1 = C_SWITCH_X_MACHINE
 C_SWITCH_X_SYSTEM_1 = C_SWITCH_X_SYSTEM
 really-lwlib : 
-	cd $(lwlibdir); $(MAKE) $(MFLAGS) LWLIB_OPTIONS \
-    CC='$(CC)' CFLAGS='$(CFLAGS)' MAKE='$(MAKE)' \
-    "C_SWITCH_X_SITE=$(C_SWITCH_X_SITE_1)" \
-    "C_SWITCH_X_MACHINE=$(C_SWITCH_X_MACHINE_1)" \
-    "C_SWITCH_X_SYSTEM=$(C_SWITCH_X_SYSTEM_1)" \
-    "C_SWITCH_SITE=$(C_SWITCH_SITE_1)" \
-    "C_SWITCH_MACHINE=$(C_SWITCH_MACHINE_1)" \
-    "C_SWITCH_SYSTEM=$(C_SWITCH_SYSTEM_1)"
-	@true  /* make -t should not create really-lwlib.  */
+	save_default = f$environment("DEFAULT")
+	set default $(lwlibdir)
+	$(MAKE) $(MMSQUALIFIERS) all
+	set default 'save_default'
+	@ ! make -t should not create really-lwlib.
 #else /* not USE_X_TOOLKIT */
 
 

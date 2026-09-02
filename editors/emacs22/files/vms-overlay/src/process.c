@@ -5415,10 +5415,11 @@ send_process (proc, buf, len, object)
   struct Lisp_Process *p = XPROCESS (proc);
   int rv;
   struct coding_system *coding;
-  struct gcpro gcpro1;
+  Lisp_Object protected_proc = proc;
+  struct gcpro gcpro1, gcpro2;
   SIGTYPE (*volatile old_sigpipe) ();
 
-  GCPRO1 (object);
+  GCPRO2 (protected_proc, object);
 
   if (p->raw_status_new)
     update_status (p);
@@ -5512,7 +5513,66 @@ send_process (proc, buf, len, object)
     }
 
 #ifdef VMS
-  rv = vms_write_fd (XINT (p->outfd), (char *) buf, len, 1);
+  rv = 0;
+  while (len > 0)
+    {
+      rv = vms_write_fd (XINT (p->outfd), (char *) buf, len, 1);
+      if (rv > 0)
+	{
+	  buf += rv;
+	  len -= rv;
+	}
+      else if (rv == 0)
+	{
+	  /* A zero-length write cannot make progress on nonempty input.  */
+	  errno = EIO;
+	  rv = -1;
+	  break;
+	}
+      else if (0
+#ifdef EWOULDBLOCK
+	       || errno == EWOULDBLOCK
+#endif
+#ifdef EAGAIN
+	       || errno == EAGAIN
+#endif
+	       )
+	{
+	  int offset = 0;
+
+	  /* Running filters may relocate the source buffer or string.  */
+	  if (BUFFERP (object))
+	    offset = BUF_PTR_BYTE_POS (XBUFFER (object), buf);
+	  else if (STRINGP (object))
+	    offset = buf - SDATA (object);
+
+#ifdef EMACS_HAS_USECS
+	  wait_reading_process_output (0, 20000, 0, 0, Qnil, NULL, 0);
+#else
+	  wait_reading_process_output (1, 0, 0, 0, Qnil, NULL, 0);
+#endif
+
+	  /* The wait can run process filters and the garbage collector.  Keep
+	     PROC alive, refresh its C pointer, and do not retry a channel that a
+	     filter deleted while making room for this write.  */
+	  proc = protected_proc;
+	  p = XPROCESS (proc);
+	  if (!EQ (p->status, Qrun) || XINT (p->outfd) < 0)
+	    {
+	      errno = EPIPE;
+	      rv = -1;
+	      break;
+	    }
+
+	  if (BUFFERP (object))
+	    buf = BUF_BYTE_ADDRESS (XBUFFER (object), offset);
+	  else if (STRINGP (object))
+	    buf = offset + SDATA (object);
+	  rv = 0;
+	}
+      else
+	break;
+    }
   if (rv >= 0)
     ;
 #else /* not VMS */

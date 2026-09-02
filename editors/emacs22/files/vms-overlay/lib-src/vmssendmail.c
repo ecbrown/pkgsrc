@@ -37,6 +37,8 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #include <stdio.h>
 #include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
 /* #include <descrip.h> */	/* ttn */
 #include <ssdef.h>
 #include <maildef.h>
@@ -156,6 +158,34 @@ ReadCmndLine(
     FILE *			    File,
     CmndLine_t			    CmndLine);
 
+/* Return 1 for a complete input line, 0 after discarding an overlong line,
+   and -1 for an input error.  If fgets filled the buffer exactly, consume a
+   following newline without treating the line as truncated.  */
+static int
+FinishInputLine(
+    FILE *			    File,
+    ConstString_t		    Line)
+{
+    int				    Character;
+
+    if (strchr(Line, '\n') != NULL || feof(File))
+	return ferror(File) ? -1 : 1;
+
+    Character = fgetc(File);
+    if (Character == '\n')
+	return 1;
+    if (Character == EOF)
+	return ferror(File) ? -1 : 1;
+
+    do
+	Character = fgetc(File);
+    while (Character != '\n' && Character != EOF);
+
+    if (ferror(File))
+	return -1;
+    return 0;
+}
+
 DisplayLine_t			    CCDisplay;
 
 DisplayLine_t			    ToDisplay;
@@ -225,27 +255,39 @@ main(
 
     MessageDescFileSpec = argv[0];
     File = fopen(MessageDescFileSpec, "r");
-    if (File != NULL)
+    if (File == NULL)
+    {
+	printf("%s: Could not open message description file %s\n",
+	       progname, MessageDescFileSpec);
+	return EXIT_FAILURE;
+    }
+    else
     {
 	VAXC$ESTABLISH(ExcHandler);
 	if ((Status = mail$send_begin(&SendContext, &NullItemList,
 				      &NullItemList)) == SS$_NORMAL)
 	{
 	    ParseMsgDesc(File);
-	    if (OKToComposeAndSend && NoErrors)
+	    if (fclose(File) != 0)
 	    {
-		ComposeMessage();
-		if (OKToComposeAndSend)
-		    if ((Status = mail$send_message(&SendContext,
-						    &NullItemList,
-						    &NullItemList))
-			!= SS$_NORMAL)
+		printf("%s: Could not close message description file %s\n",
+		       progname, MessageDescFileSpec);
+		NoErrors = FALSE;
+	    }
+	    if (OKToComposeAndSend && NoErrors)
 		    {
-			printf("%s: Problem sending message\n", progname);
-			printf("             MAIL$SEND_MESSAGE returned %d\n",
-			       Status);
-			return EXIT_FAILURE;
-		    }
+			ComposeMessage();
+			if (OKToComposeAndSend && NoErrors)
+			    if ((Status = mail$send_message(&SendContext,
+							    &NullItemList,
+							    &NullItemList))
+				!= SS$_NORMAL)
+			    {
+				printf("%s: Problem sending message\n", progname);
+				printf("             MAIL$SEND_MESSAGE returned %d\n",
+				       Status);
+				NoErrors = FALSE;
+			    }
 	    }
 	    if ((Status = mail$send_end(&SendContext, NullItemList,
 					NullItemList)) != SS$_NORMAL)
@@ -258,6 +300,7 @@ main(
 	}
 	else
 	{
+	    fclose(File);
 	    printf("%s: Could not compose message\n", progname);
 	    printf("             MAIL$SEND_BEGIN returned %d\n",
 		   Status);
@@ -291,21 +334,32 @@ ReadCmndLine(
 {
     Boolean_t			    GetMore;
     char *			    NewlineCharP;
+    int				    LineStatus;
     static CmndLine_t		    NextLine = { '\0' };
 
     GetMore = TRUE;
     if (NextLine[0] != '\0')
-	strcpy(CmndLine, NextLine);
+	{
+	    strcpy(CmndLine, NextLine);
+	    NextLine[0] = '\0';
+	}
     else
 	CmndLine[0] = '\0';
 
     while (GetMore)
     {
-	if ((fgets(NextLine, sizeof(CmndLine_t), File) == NULL) &&
-	    !feof(File))
+	if (fgets(NextLine, sizeof(CmndLine_t), File) == NULL)
 	{
-	    if (CmndLine[0] == '\0') /* cmnd line is empty */
+	    if (ferror(File))
 		NoErrors = FALSE;
+	    GetMore = FALSE;
+	}
+	else if ((LineStatus = FinishInputLine(File, NextLine)) <= 0)
+	{
+	    printf("%s: %s reading message description line\n", progname,
+		   LineStatus < 0 ? "Problem" : "Line too long while");
+	    NextLine[0] = '\0';
+	    NoErrors = FALSE;
 	    GetMore = FALSE;
 	}
 	else if (CmndLine[0] == '\0')
@@ -315,16 +369,17 @@ ReadCmndLine(
 	}
 	else if ((NextLine[0] == ' ') || (NextLine[0] == '\t'))
 	    { /* lines beginning with space or tab are part of current cmnd */
-		if (strlen(CmndLine) + strlen(NextLine) >=
+		NewlineCharP = strrchr(CmndLine, '\n');
+		if (strlen(CmndLine) + strlen(NextLine)
+		    + (NewlineCharP != NULL ? 1 : 0) >=
 		    sizeof(CmndLine_t))
 		{
-		    printf("%s: Line to long\n", progname);
+		    printf("%s: Line too long\n", progname);
 		    GetMore = FALSE;
 		    NoErrors = FALSE;
 		}
 		else
 		{
-		    NewlineCharP = strchr(CmndLine, '\n');
 		    if (NewlineCharP != NULL)
 			strcpy(NewlineCharP, "\n\r");
 		    strcat(CmndLine, NextLine);
@@ -381,8 +436,14 @@ AddAddress(
 	END_OF_ITEM_LIST_MARKER
     };
 
-    while (isspace(*Address))
+    while (isspace((unsigned char) *Address))
 	Address++;
+    if (*Address == '\0')
+    {
+	printf("%s: Empty address\n", progname);
+	NoErrors = FALSE;
+	return;
+    }
     if (Address[0]!='@')
     {
 	AddrItemList[0].BufferLength = strlen(Address);
@@ -392,6 +453,7 @@ AddAddress(
 				  NullItemList) != SS$_NORMAL)
 	{
 	    printf("%s: Problem with address %s\n", progname, Address);
+	    NoErrors = FALSE;
 	}
     }
     else
@@ -402,19 +464,31 @@ AddAddress(
 	{
 	    char DistAddress[257];
 
-	    do {
+	    while (fgets(DistAddress, sizeof DistAddress, distfile) != NULL)
+	    {
 		char *tempchar;
 		char *firstnonspace;
 		char *lastnonspace;
-		register instring = 0;
+		int line_status;
+		register int instring = 0;
 
-		fgets(DistAddress,256,distfile);
+		line_status = FinishInputLine(distfile, DistAddress);
+		if (line_status <= 0)
+		{
+		    printf("%s: %s distribution file line in %s\n",
+			   progname,
+			   line_status < 0 ? "Problem reading" : "Overlong",
+			   Address);
+		    NoErrors = FALSE;
+		    break;
+		}
+
 #ifdef DEBUG
 		printf("Trimming distribution file item `%s'...\n",
 		       DistAddress);
 #endif
 		tempchar = DistAddress;
-		while (*tempchar != '\0' && strchr(" \t\f",*tempchar) != NULL)
+		while (*tempchar != '\0' && strchr(" \t\f\r",*tempchar) != NULL)
 		    tempchar++;
 		firstnonspace = lastnonspace = tempchar;
 		while (*tempchar != '\0')
@@ -446,7 +520,7 @@ AddAddress(
 
 			/* Yes, I want lastnonspace to point at the character
 			   AFTER the last non-space character */
-			if (strchr(" \t\f",*tempchar++) == NULL || instring)
+			if (strchr(" \t\f\r",*tempchar++) == NULL || instring)
 			    lastnonspace = tempchar;
 		    }
 		}
@@ -468,6 +542,7 @@ AddAddress(
 		    {
 			printf("%s: Problem with address %s\n", progname,
 			       firstnonspace);
+			NoErrors = FALSE;
 		    }
 		}
 #ifdef DEBUG
@@ -475,13 +550,24 @@ AddAddress(
 		    printf(" (not used, since it's empty)\n");
 #endif
 	    }
-	    while (!feof(distfile));
-	    fclose(distfile);
+	    if (ferror(distfile))
+	    {
+		printf("%s: problems reading distribution file %s\n",
+		       progname, Address);
+		NoErrors = FALSE;
+	    }
+	    if (fclose(distfile) != 0)
+	    {
+		printf("%s: problems closing distribution file %s\n",
+		       progname, Address);
+		NoErrors = FALSE;
+	    }
 	}
 	else
 	{
 	    printf("%s:problems with distribution file %s\n",
 		   progname, Address);
+	    NoErrors = FALSE;
 	}
     }
 }
@@ -525,6 +611,7 @@ AddSubject(
     ConstString_t		    Subject)
 {
     strncpy(MsgSubject, Subject, sizeof MsgSubject - 1);
+    MsgSubject[sizeof MsgSubject - 1] = '\0';
 }
 
 void
@@ -532,6 +619,7 @@ AddMsgFile(
     ConstString_t		    FileName)
 {
     strncpy(MsgFile, FileName, sizeof MsgFile - 1);
+    MsgFile[sizeof MsgFile - 1] = '\0';
 }
 
 void
@@ -572,8 +660,6 @@ AddAddrToDisplay(
 void
 ComposeMessage(void)
 {
-    char			    ResultSpec[NAM$C_MAXRSS];
-    
     ItemList_t AttrItemList[] = 
     {
       { 0, MAIL$_SEND_TO_LINE, ToDisplay,  0 },
@@ -601,10 +687,16 @@ ComposeMessage(void)
 
 	if (mail$send_add_bodypart(&SendContext, BodyItemList,
 				   &NullItemList) != SS$_NORMAL)
+	{
 	    printf("%s: Problem with message file\n", progname);
+	    NoErrors = FALSE;
+	}
     }
     else
-	printf("%s: Problem adding attributes\n", progname);
+	{
+	    printf("%s: Problem adding attributes\n", progname);
+	    NoErrors = FALSE;
+	}
 }
 
 /* Exit codes for success and failure.  */

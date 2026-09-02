@@ -1,5 +1,5 @@
 /*
- * Copyright © 1994 the Free Software Foundation, Inc.
+ * Copyright (C) 1994 the Free Software Foundation, Inc.
  *
  * This file is a part of GNU VMSLIB, the GNU library for porting GNU
  * software to VMS.
@@ -59,33 +59,39 @@ int esctrans (char *dst, char *src)
   for (s = src, d = dst; *s != 0; ) {
     switch (*s) {
     case '\\':
+      /* A trailing escape used to advance S past the terminating NUL, so the
+         outer loop read beyond SRC.  Preserve a lone backslash literally.  */
+      if (s[1] == '\0') {
+	*d++ = *s++;
+	break;
+      }
       switch (*++s) {
       case 'a':			/* alert (bell) */
-	*d++ = '\a'; break;
+	*d++ = '\a'; s++; break;
       case 'b':			/* backspace */
-	*d++ = '\b'; break; 	
+	*d++ = '\b'; s++; break;
       case 'f':			/* formfeed */
-	*d++ = '\f'; break;
+	*d++ = '\f'; s++; break;
       case 'n':			/* newline */
-	*d++ = '\n'; *d++ = '\r'; break;
+	*d++ = '\r'; *d++ = '\n'; s++; break;
       case 'r':			/* carraige return */
-	*d++ = '\r'; break;
+	*d++ = '\r'; s++; break;
       case 't':			/* horizontal tab */
-	*d++ = '\t'; break;
+	*d++ = '\t'; s++; break;
       case 'v':			/* vertical tab */
-	*d++ = '\v'; break;
+	*d++ = '\v'; s++; break;
       case '\'':		/* single quote */
-	*d++ = '\''; break;
+	*d++ = '\''; s++; break;
       case '\"':		/* double quotes */
-	*d++ = '\"'; break;
+	*d++ = '\"'; s++; break;
       case 'e':			/* real escape */
-	*d++ = '\033'; break;
+	*d++ = '\033'; s++; break;
       case '0': case '1':	/* octal, 1--3 digits allowed */
       case '2': case '3': case '4': case '5': case '6': case '7':
 	tmp[i=0] = *s++;
-	if (isdigit(*s) && *s != '8' && *s != '9') {
+	if (isdigit((unsigned char) *s) && *s != '8' && *s != '9') {
 	  tmp[++i] = *s++;
-	  if (isdigit(*s) && *s != '8' && *s != '9')
+	  if (isdigit((unsigned char) *s) && *s != '8' && *s != '9')
 	    tmp[++i] = *s++;
 	}
 	tmp[++i] = 0;
@@ -93,24 +99,36 @@ int esctrans (char *dst, char *src)
 	*d++ = val; break;
       case 'x':			/* hexadecimal, 1--2 digits allowed */
 	s++;
-	if (isxdigit(*s)) {
+	if (isxdigit((unsigned char) *s)) {
 	  tmp[i=0] = *s++;
-	  if (isxdigit(*s)) {
+	  if (isxdigit((unsigned char) *s)) {
 	    tmp[++i] = *s++;
 	  }
 	  tmp[++i] = 0;
 	  sscanf (tmp, "%x", &val);
 	  *d++ = val;
 	}
-	else			/* invalid hexadecimal */
-	  *d++ = *s;
+	else			/* invalid or incomplete hexadecimal */
+	  {
+	    if (*s == '\0')
+	      *d++ = 'x';
+	    else
+	      *d++ = *s++;
+	  }
 	break;
       default:			/* just copy as-is */
 	*d++ = *s++; break;
       }
       break;
     case '^':			/* control character */
-      *d++ = *++s & 0x1F; break;
+	if (s[1] == '\0')
+	  *d++ = *s++;
+	else
+	  {
+	    s++;
+	    *d++ = *s++ & 0x1F;
+	  }
+	break;
     default:
       *d++ = *s++; break;
     }

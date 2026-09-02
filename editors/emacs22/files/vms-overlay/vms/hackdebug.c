@@ -1,5 +1,5 @@
 /*
- * Copyright © 1994 the Free Software Foundation, Inc.
+ * Copyright (C) 1994 the Free Software Foundation, Inc.
  *
  * Author: Richard Levitte <levitte@e.kth.se>
  *
@@ -41,6 +41,9 @@ static char hackdebug_version[] = "VMS hackdebug version 1.1";
 
 #include <unixio.h>
 #include <file.h>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
 
 #ifdef __DECC
 #if __VMS_VER < 70000000
@@ -55,23 +58,86 @@ static char hackdebug_version[] = "VMS hackdebug version 1.1";
 #define BLOCK_SIZE (512)
 
 #ifdef VAX
-#define offset (0x20)
+#define IMAGE_OFFSET (0x20)
 #define mask (~0x01)
 #define value (0x01)
 #else
-#define offset (0x50)
+#define IMAGE_OFFSET (0x50)
 #define mask (~0x01)
 #define value (0x01)
 #endif
 
 static char buffer[BLOCK_SIZE];
+static char original[BLOCK_SIZE];
+
+static int
+read_block (fd, destination, length)
+     int fd;
+     char *destination;
+     int length;
+{
+  int offset = 0;
+
+  while (offset < length)
+    {
+      int count = read (fd, destination + offset, length - offset);
+      if (count < 0)
+	{
+	  if (errno == EINTR)
+	    continue;
+	  return -1;
+	}
+      if (count == 0)
+	{
+	  errno = EIO;
+	  return -1;
+	}
+      offset += count;
+    }
+  return 0;
+}
+
+static int
+write_block (fd, source, length)
+     int fd;
+     const char *source;
+     int length;
+{
+  int offset = 0;
+
+  while (offset < length)
+    {
+      int count = write (fd, source + offset, length - offset);
+      if (count < 0)
+	{
+	  if (errno == EINTR)
+	    continue;
+	  return -1;
+	}
+      if (count == 0)
+	{
+	  errno = EIO;
+	  return -1;
+	}
+      offset += count;
+    }
+  return 0;
+}
 
 int main (argc, argv)
      int argc;
      char *argv[];
 {
 #define IMAGE argv[1]
-  int fd = open (IMAGE, FLAGS, MODE);
+  int fd;
+
+  if (argc != 2)
+    {
+      fprintf (stderr, "Usage: hackdebug image\n");
+      return 4;
+    }
+
+  fd = open (IMAGE, FLAGS, MODE);
 
   if (fd == -1)
     {
@@ -79,15 +145,36 @@ int main (argc, argv)
       return 4; /* This is fatal */
     }
 
-  read (fd, buffer, BLOCK_SIZE);
+  if (read_block (fd, buffer, BLOCK_SIZE) != 0)
+    {
+      perror ("Could not read TEMACS.EXE image header");
+      close (fd);
+      return 4;
+    }
+  memcpy (original, buffer, sizeof buffer);
 
-  buffer[offset] &= mask;
+  buffer[IMAGE_OFFSET] &= mask;
 
-  lseek (fd, 0, SEEK_SET);
+  if (lseek (fd, 0, SEEK_SET) != 0
+      || write_block (fd, buffer, BLOCK_SIZE) != 0)
+    {
+      int saved_errno = errno;
 
-  write (fd, buffer, BLOCK_SIZE);
+      /* A short write can leave an unusable image.  Restore the header on a
+         best-effort basis before reporting the failed build step.  */
+      if (lseek (fd, 0, SEEK_SET) == 0)
+	(void) write_block (fd, original, BLOCK_SIZE);
+      (void) close (fd);
+      errno = saved_errno;
+      perror ("Could not update TEMACS.EXE image header");
+      return 4;
+    }
 
-  close (fd);
+  if (close (fd) != 0)
+    {
+      perror ("Could not close TEMACS.EXE");
+      return 4;
+    }
 
   return 1;
 }

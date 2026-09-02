@@ -27,6 +27,13 @@
     (setq emacs-vms-smoke-failures
 	  (cons name emacs-vms-smoke-failures))))
 
+(defun emacs-vms-smoke-filespec-tail (name)
+  "Return the part of native file specification NAME after its device."
+  (let ((index (1- (length name))))
+    (while (and (>= index 0) (/= (aref name index) ?:))
+      (setq index (1- index)))
+    (substring name (1+ index))))
+
 (emacs-vms-smoke-record
  'version (string-match "\\`22\\.3" emacs-version) emacs-version)
 (emacs-vms-smoke-record 'batch (= (1+ (1+ (1+ 39))) 42))
@@ -100,6 +107,65 @@
    'vms-unix-directory-syntax
    (string= converted (concat unix-directory "/"))
    (format "directory=%S converted=%S" unix-directory converted)))
+
+(let* ((directory-file "SYS$DISK:[000000]FOO^.BAR.DIR;1")
+	(expected-directory-file "[000000]FOO^.BAR.DIR.1")
+	(directory "SYS$DISK:[000000.FOO^.BAR]")
+	(expected-directory "[000000.FOO^.BAR]")
+	(as-directory (file-name-as-directory directory-file))
+	(as-file (directory-file-name directory)))
+  (emacs-vms-smoke-record
+   'ods5-escaped-dot-directory
+   (and (string= (upcase (emacs-vms-smoke-filespec-tail as-directory))
+		 (upcase expected-directory))
+	(string= (upcase (emacs-vms-smoke-filespec-tail as-file))
+		 (upcase expected-directory-file)))
+   (format "as-directory=%S as-file=%S" as-directory as-file)))
+
+(let* ((directory-file "SYS$DISK:[000000]FOO^]BAR.DIR;1")
+	(expected-directory-file "[000000]FOO^]BAR.DIR.1")
+	(directory "SYS$DISK:[000000.FOO^]BAR]")
+	(expected-directory "[000000.FOO^]BAR]")
+	(as-directory (file-name-as-directory directory-file))
+	(as-file (directory-file-name directory)))
+  (emacs-vms-smoke-record
+   'ods5-escaped-bracket-directory
+   (and (string= (upcase (emacs-vms-smoke-filespec-tail as-directory))
+		 (upcase expected-directory))
+	(string= (upcase (emacs-vms-smoke-filespec-tail as-file))
+		 (upcase expected-directory-file)))
+   (format "as-directory=%S as-file=%S" as-directory as-file)))
+
+(dolist (leaf '("A^]B.TXT;1" "A^>B.TXT;1" "A^:B.TXT;1"))
+  (let* ((name (concat "SYS$DISK:[BASE]" leaf))
+	 (directory (file-name-directory name))
+	 (nondirectory (file-name-nondirectory name)))
+    (emacs-vms-smoke-record
+     (intern (concat "ods5-components-"
+		     (number-to-string (aref leaf 2))))
+     (and (string= directory "SYS$DISK:[BASE]")
+	  (string= nondirectory leaf))
+     (format "name=%S directory=%S nondirectory=%S"
+	     name directory nondirectory))))
+
+(let* ((even "SYS$DISK:[BASE]A^^]B.TXT;1")
+	(odd "SYS$DISK:[BASE]A^^^]B.TXT;1"))
+  (emacs-vms-smoke-record
+   'ods5-caret-parity
+   (and (string= (file-name-directory even) "SYS$DISK:[BASE]A^^]")
+	(string= (file-name-nondirectory even) "B.TXT;1")
+	(string= (file-name-directory odd) "SYS$DISK:[BASE]")
+	(string= (file-name-nondirectory odd) "A^^^]B.TXT;1")
+	(string= (directory-file-name "E22^]") "E22^]"))
+   (format "even-dir=%S odd-dir=%S"
+	   (file-name-directory even) (file-name-directory odd))))
+
+(let* ((name "SYS$DISK:[BASE.FOO^.-]BAR.TXT;1")
+	(expanded (expand-file-name name)))
+  (emacs-vms-smoke-record
+   'ods5-slow-path-escaped-dot
+   (string= (upcase expanded) (upcase name))
+   (format "name=%S expanded=%S" name expanded)))
 
 (let ((home (expand-file-name "~"))
       (home-with-slash (expand-file-name "~/")))
@@ -179,7 +245,20 @@
 		 start end (and start end (buffer-substring start end))))))
   (error
    (emacs-vms-smoke-record
-    'ods5-dired-parser nil (error-message-string err))))
+   'ods5-dired-parser nil (error-message-string err))))
+
+(condition-case err
+    (with-temp-buffer
+      (insert "  Mixed Case File.txt;7  1  27-AUG-2026\n")
+      (goto-char (point-min))
+      (let ((parsed (dired-get-filename 'verbatim t)))
+	(emacs-vms-smoke-record
+	 'ods5-dired-space
+	 (string= parsed "Mixed Case File.txt;7")
+	 (format "value=%S" parsed))))
+  (error
+   (emacs-vms-smoke-record
+    'ods5-dired-space nil (error-message-string err))))
 
 (condition-case err
     (with-temp-buffer
@@ -216,7 +295,7 @@
       (require 'gnus-agent)
       (let ((original-gnus (symbol-function 'gnus))
 	    (gnus-plugged t)
-	    gnus-invocation)
+	    (gnus-invocation 'not-called))
 	(unwind-protect
 	    (progn
 	      (fset 'gnus
@@ -226,7 +305,7 @@
 	      (emacs-vms-smoke-record
 	       'gnus-unplugged
 	       (and (null gnus-plugged)
-		    (equal gnus-invocation '(nil t)))
+		    (null gnus-invocation))
 	       (format "plugged=%S invocation=%S"
 		       gnus-plugged gnus-invocation)))
 	  (fset 'gnus original-gnus))))
@@ -238,6 +317,67 @@
   (emacs-vms-smoke-record
    'subdir-library (and file (file-readable-p file))
    (or file (format "load-path=%S" load-path))))
+
+(condition-case err
+    (let* ((component (make-string 40 ?a))
+	   (relative (mapconcat 'identity (make-list 9 component) "/"))
+	   (expanded (expand-file-name relative default-directory)))
+      (emacs-vms-smoke-record
+	'long-unix-path-translation
+	(and (stringp expanded) (> (length expanded) 255))
+	(format "relative=%d expanded=%d value=%S"
+		(length relative) (length expanded) expanded)))
+  (error
+   (emacs-vms-smoke-record
+    'long-unix-path-translation nil (error-message-string err))))
+
+(condition-case err
+    (let ((file (make-temp-file "E22_COPY_SELF_"))
+	  (copy (make-temp-file "E22_COPY_DISTINCT_"))
+	  (logical (format "E22_COPY_%s" (vms-system-info "PID")))
+	  same-file-rejected logical-alias-rejected
+	  (versions-left 20))
+      (unwind-protect
+	  (progn
+	    (with-temp-file file (insert "E22-COPY-SELF"))
+	    (define-logical-name logical (file-name-directory file))
+	    (setq same-file-rejected
+		  (condition-case nil
+		      (progn (copy-file file file t) nil)
+		    (file-error t)))
+	    (setq logical-alias-rejected
+		  (condition-case nil
+		      (progn
+			(copy-file file
+				   (concat logical ":"
+					   (file-name-nondirectory file))
+				   t)
+			nil)
+		    (file-error t)))
+	    (copy-file file copy t)
+	    (with-temp-buffer
+	      (insert-file-contents file)
+	      (emacs-vms-smoke-record
+	       'copy-file-self
+	       (and same-file-rejected logical-alias-rejected
+		    (string= (buffer-string) "E22-COPY-SELF")
+		    (with-temp-buffer
+		      (insert-file-contents copy)
+		      (string= (buffer-string) "E22-COPY-SELF")))
+	       (format "file=%S direct=%S logical=%S contents=%S"
+		       file same-file-rejected logical-alias-rejected
+		       (buffer-string)))))
+	(condition-case nil (define-logical-name logical nil) (error nil))
+	(dolist (cleanup (list file copy))
+	  (setq versions-left 20)
+	  (while (and (> versions-left 0) (file-exists-p cleanup))
+	    (setq versions-left (1- versions-left))
+	    (condition-case nil
+		(delete-file cleanup)
+	      (error (setq versions-left 0)))))))
+  (error
+   (emacs-vms-smoke-record
+    'copy-file-self nil (error-message-string err))))
 
 (condition-case err
     (let* ((directory (make-temp-file "E22_ODS5_" t))
@@ -269,8 +409,34 @@
     'ods5-long-filename nil (error-message-string err))))
 
 (condition-case err
+    (let* ((parent (make-temp-file "E22_ODS5_DIR_" t))
+	   ;; A right bracket in an ODS-5 component is written as ^].
+	   (child (expand-file-name "literal^]bracket" parent))
+	   directory-name directory-file roundtrip)
+      (unwind-protect
+	  (progn
+	    (make-directory child)
+	    (setq directory-name (file-name-as-directory child))
+	    (setq directory-file (directory-file-name directory-name))
+	    (setq roundtrip (file-name-as-directory directory-file))
+	    (emacs-vms-smoke-record
+	     'ods5-real-bracket-directory
+	     (and (file-directory-p child)
+		  (string= (upcase directory-name) (upcase roundtrip)))
+	     (format "directory=%S file=%S roundtrip=%S"
+		     directory-name directory-file roundtrip)))
+	(when (file-directory-p child)
+	  (delete-directory child))
+	(when (file-directory-p parent)
+	  (delete-directory parent))))
+  (error
+   (emacs-vms-smoke-record
+    'ods5-real-bracket-directory nil (error-message-string err))))
+
+(condition-case err
     (let ((file (make-temp-file "E22_WRITE_"))
-	  (contents (make-string 65536 ?x)))
+	  (contents (make-string 65536 ?x))
+	  (versions-left 20))
       (unwind-protect
 	  (progn
 	    (write-region contents nil file nil 'silent)
@@ -280,11 +446,55 @@
 	       'long-unterminated-write
 	       (string= contents (buffer-string))
 	       (format "bytes=%d" (buffer-size)))))
-	(when (file-exists-p file)
-	  (delete-file file))))
+	(while (and (> versions-left 0) (file-exists-p file))
+	  (setq versions-left (1- versions-left))
+	  (condition-case nil
+	      (delete-file file)
+	    (error (setq versions-left 0))))))
   (error
    (emacs-vms-smoke-record
     'long-unterminated-write nil (error-message-string err))))
+
+(condition-case err
+    (let ((file (make-temp-file "E22_PROTECT_"))
+	  (buffer nil)
+	  (make-backup-files nil)
+	  before after
+	  (versions-left 20))
+      (unwind-protect
+	  (progn
+	    (set-file-modes file #o400)
+	    (setq before (file-modes file))
+	    (setq buffer (find-file-noselect file))
+	    (with-current-buffer buffer
+	      ;; Visiting a protected file correctly makes its buffer read-only.
+	      ;; Override that UI guard so this test reaches the VMS save path.
+	      (setq buffer-read-only nil)
+	      (insert "PROTECTION")
+	      ;; The write-protection confirmation is useful interactively but
+	      ;; must not make the batch smoke test wait on its controlling TTY.
+	      (let ((original-yes-or-no-p (symbol-function 'yes-or-no-p)))
+		(unwind-protect
+		    (progn
+		      (fset 'yes-or-no-p (lambda (&rest ignored) t))
+		      (save-buffer))
+		  (fset 'yes-or-no-p original-yes-or-no-p))))
+	    (setq after (file-modes file))
+	    (emacs-vms-smoke-record
+	     'save-restores-protection
+	     (and (integerp before) (integerp after) (= before after))
+	     (format "before=%S after=%S file=%S" before after file)))
+	(when (buffer-live-p buffer)
+	  (with-current-buffer buffer (set-buffer-modified-p nil))
+	  (kill-buffer buffer))
+	(when (file-exists-p file)
+	  (condition-case nil (set-file-modes file #o600) (error nil)))
+	(while (and (> versions-left 0) (file-exists-p file))
+	  (setq versions-left (1- versions-left))
+	  (condition-case nil (delete-file file) (error (setq versions-left 0))))))
+  (error
+   (emacs-vms-smoke-record
+    'save-restores-protection nil (error-message-string err))))
 
 (condition-case err
     (let* ((tag (format "E22_CYCLE_%s_" (vms-system-info "PID")))
@@ -308,27 +518,70 @@
    (emacs-vms-smoke-record 'logical-cycle nil (error-message-string err))))
 
 (condition-case err
+    (let ((tab-rejected
+	   (condition-case nil
+	       (progn (vms-dcl-file-argument (concat "A" (string ?\t) "B"))
+		      nil)
+	     (error t)))
+	  (trailing-caret-rejected
+	   (condition-case nil
+	       (progn (vms-dcl-file-argument "SYS$DISK:[DIR]FILE^") nil)
+	     (error t))))
+      (emacs-vms-smoke-record
+	'dcl-file-argument
+	(and tab-rejected trailing-caret-rejected
+	     (string= (vms-dcl-file-argument
+		       "SYS$DISK:[DIR]A B&!/@.TXT;1")
+		      "SYS$DISK:[DIR]A^ B^&^!^/^@.TXT;1")
+	     (string= (vms-dcl-file-argument
+		       "SYS$DISK:[DIR]A^ B.TXT;1")
+		      "SYS$DISK:[DIR]A^ B.TXT;1")
+	     (string= (vms-dcl-file-argument
+		       "SYS$DISK:[5953,9,0]A?.TXT;*")
+		      "SYS$DISK:[5953,9,0]A?.TXT;*")
+	     (string= (vms-dcl-file-argument
+		       "SYS$DISK:[DIR]A,B.TXT;1")
+		      "SYS$DISK:[DIR]A^,B.TXT;1")
+	     ;; A raw final hyphen is DCL's command-continuation marker.
+	     (string= (vms-dcl-file-argument "SYS$DISK:[DIR]FILE-")
+		      "SYS$DISK:[DIR]FILE^-"))))
+  (error
+   (emacs-vms-smoke-record
+    'dcl-file-argument nil (error-message-string err))))
+
+(condition-case err
     (let ((original-call-process (symbol-function 'call-process))
+	  (original-file-argument
+	   (symbol-function 'vms-dcl-file-argument))
 	  captured-command
-	  temporary)
+	  captured-temporary
+	  expected-command)
       (unwind-protect
 	  (progn
 	    (fset 'call-process
 		  (lambda (&rest arguments)
 		    (setq captured-command (car (last arguments)))
 		    1))
+	    (fset 'vms-dcl-file-argument
+		  (lambda (file)
+		    (setq captured-temporary file)
+		    (funcall original-file-argument file)))
 	    (with-temp-buffer
 	      (insert "print smoke")
 	      (vms-print-region (point-min) (point-max) "PRINT"
 				nil nil nil "/QUEUE=SYS$PRINT"))
-	    (when (and captured-command
-		       (string-match
-			"PRINT \"\\([^\"]+\\)\"/NAME=" captured-command))
-	      (setq temporary (match-string 1 captured-command)))
+	    (setq expected-command
+		  (concat "PRINT "
+			  (funcall original-file-argument captured-temporary)
+			  "/NAME=\"GNUprintbuffer\" /QUEUE=SYS$PRINT"))
 	    (emacs-vms-smoke-record
 	     'print-temporary-file
-	     (and temporary (not (file-exists-p temporary)))
-	     (format "command=%S temporary=%S" captured-command temporary)))
+	     (and captured-temporary
+		  (not (file-exists-p captured-temporary))
+		  (string= captured-command expected-command))
+	     (format "command=%S expected=%S temporary=%S"
+		     captured-command expected-command captured-temporary)))
+	(fset 'vms-dcl-file-argument original-file-argument)
 	(fset 'call-process original-call-process)))
   (error
    (emacs-vms-smoke-record
@@ -368,6 +621,120 @@
    (emacs-vms-smoke-record 'call-process nil (error-message-string err))))
 
 (condition-case err
+    (with-temp-buffer
+      (let ((status
+	     (call-process
+	      "*dcl*" nil t nil "-c"
+	      "write sys$output \"E22-RAW-''f$time()'\"")))
+	(emacs-vms-smoke-record
+	 'raw-dcl-command
+	 (and (integerp status) (= (logand status 1) 1)
+	      (string-match "\\(?:\\`\\|[\r\n]\\)E22-RAW-"
+			    (buffer-string)))
+	 (format "status=%S output=%S" status (buffer-string)))))
+  (error
+   (emacs-vms-smoke-record
+    'raw-dcl-command nil (error-message-string err))))
+
+(condition-case err
+    (let ((expected-apostrophes
+	   "Adjacent apostrophes are unsafe in VMS DCL argument")
+	  (expected-control "Unsafe control character in VMS DCL argument")
+	  (safe-quoted
+	   (string= (vms-dcl-quote-argument "two \"words\"")
+		    "\"two \"\"words\"\"\""))
+	  (apostrophes-diagnostic
+	   (condition-case diagnostic
+	       (progn (vms-dcl-quote-argument "bad''symbol'") nil)
+	     (error (error-message-string diagnostic))))
+	  (control-diagnostic
+	   (condition-case diagnostic
+	       (progn
+		 (vms-dcl-quote-argument
+		  (concat "bad" (char-to-string 10) "argument"))
+		 nil)
+	     (error (error-message-string diagnostic)))))
+      (emacs-vms-smoke-record
+	'dcl-quoted-argument-validation
+	(and safe-quoted
+	     (equal apostrophes-diagnostic expected-apostrophes)
+	     (equal control-diagnostic expected-control))
+	(format "safe=%S apostrophes=%S control=%S"
+		safe-quoted apostrophes-diagnostic control-diagnostic)))
+  (error
+   (emacs-vms-smoke-record
+    'dcl-quoted-argument-validation nil (error-message-string err))))
+
+(condition-case err
+    (let* ((image (vms-system-info "IMAGE"))
+	   (bad-apostrophes "bad''symbol'")
+	   (bad-control (concat "bad" (char-to-string 10) "argument"))
+	   (expected-apostrophes
+	    "Adjacent apostrophes in OpenVMS process argument")
+	   (expected-control "Control character in OpenVMS process command")
+	   (expected-command "OpenVMS command line too long")
+	   (expected-program "Apostrophe in raw OpenVMS program command")
+	   apostrophes-diagnostic async-diagnostics control-diagnostic
+	   command-diagnostic program-diagnostic)
+	(setq apostrophes-diagnostic
+	      (condition-case diagnostic
+		  (progn
+		    (call-process image nil nil nil "-batch" bad-apostrophes)
+		    nil)
+		(error (error-message-string diagnostic))))
+	(setq async-diagnostics nil)
+	(let ((attempt 0)
+	      (name "e22-invalid-process-argument"))
+	  (while (< attempt 2)
+	    (let ((diagnostic
+		   (condition-case process-error
+		       (progn
+			 (start-process name nil image "-batch" bad-apostrophes)
+			 nil)
+		     (error (error-message-string process-error)))))
+	      (when (get-process name)
+		(delete-process name)
+		(setq diagnostic "Rejected start left a live process"))
+	      (setq async-diagnostics
+		    (cons diagnostic async-diagnostics)))
+	    (setq attempt (1+ attempt))))
+	(setq async-diagnostics (nreverse async-diagnostics))
+	(setq control-diagnostic
+	      (condition-case diagnostic
+		  (progn
+		    (call-process image nil nil nil "-batch" bad-control)
+		    nil)
+		(error (error-message-string diagnostic))))
+	(setq command-diagnostic
+	      (condition-case diagnostic
+		  (progn
+		    (call-process image nil nil nil "-batch"
+				  (make-string 220 ?a) (make-string 220 ?b)
+				  (make-string 220 ?c) (make-string 220 ?d)
+				  (make-string 220 ?e))
+		    nil)
+		(error (error-message-string diagnostic))))
+	(setq program-diagnostic
+	      (condition-case diagnostic
+		  (progn (call-process "bad'program" nil nil nil) nil)
+		(error (error-message-string diagnostic))))
+	(emacs-vms-smoke-record
+	 'process-argument-validation
+	 (and (equal apostrophes-diagnostic expected-apostrophes)
+	      (equal async-diagnostics
+		     (list expected-apostrophes expected-apostrophes))
+	      (equal control-diagnostic expected-control)
+	      (equal command-diagnostic expected-command)
+	      (equal program-diagnostic expected-program))
+	 (format
+	  "apostrophes=%S async=%S control=%S command=%S program=%S"
+	  apostrophes-diagnostic async-diagnostics control-diagnostic
+	  command-diagnostic program-diagnostic)))
+  (error
+   (emacs-vms-smoke-record
+    'process-argument-validation nil (error-message-string err))))
+
+(condition-case err
     (let ((no-wait-status
 	   (call-process "*dcl*" nil 0 nil "-c" "wait 00:00:01")))
       ;; The first child used to share the synchronous child's completion
@@ -399,11 +766,11 @@
 	(let ((status
 	       (call-process image nil t nil
 			     "-map" map "-batch" "-q" "-eval"
-			     "(princ \"E22 QUOTED ARG\")")))
+			     "(princ \"E22 O'Brien\")")))
 	  (emacs-vms-smoke-record
 	   'versioned-image-and-quoting
 	   (and (integerp status) (= (logand status 1) 1)
-		(string-match "E22 QUOTED ARG" (buffer-string)))
+		(string-match "E22 O'Brien" (buffer-string)))
 	   (format "image=%S map=%S status=%S output=%S"
 		   image map status (buffer-string))))))
   (error
@@ -421,8 +788,13 @@
       (unwind-protect
 	  (progn
 	    (setq process (start-process "e22-async" buffer "*dcl*" ""))
-	    (process-send-string process
-				 "WRITE SYS$OUTPUT \"E22OK\"\n")
+	    ;; One call deliberately exceeds the VMS PTY buffer.  The old
+	    ;; one-shot send path silently discarded everything after its first
+	    ;; partial write, including the marker at the tail.
+	    (process-send-string
+	     process
+	     (concat (mapconcat 'identity (make-list 600 "! E22 PAD") "\n")
+		     "\nWRITE SYS$OUTPUT \"E22OK\"\n"))
 	    (setq deadline (+ (float-time) 10.0))
 	    (while (and (eq (process-status process) 'run)
 			(not
@@ -517,7 +889,13 @@
 	    (error nil))
 	  (accept-process-output process 2)
 	  (when (eq (process-status process) 'run)
-	    (delete-process process)))))
+	    (delete-process process)))
+	(when process
+	  (condition-case nil
+	      (delete-process process)
+	    (error nil)))
+	(when (buffer-live-p buffer)
+	  (kill-buffer buffer))))
   (error
    (emacs-vms-smoke-record 'vmsproc-helper nil (error-message-string err))))
 

@@ -56,10 +56,11 @@ $    then
 $     passes = 1
 $     __tmp_remove_name_delete = __remove_name_delete
 $     __tmp_e = e
-$     if (f$parse(e,,,"TYPE") .eqs. ".DIR" .or. f$parse(e,,,"TYPE") .eqs. ".*")
+$     __tmp_type = f$edit(f$parse(e,,,"TYPE"),"UPCASE")
+$     if (__tmp_type .eqs. ".DIR" .or. __tmp_type .eqs. ".*")
 $      then
 $       __remove_name_delete = __remove_dir_delete
-$       if f$parse(e,,,"TYPE") .eqs. ".*" then passes = 2
+$       if __tmp_type .eqs. ".*" then passes = 2
 $       e = f$parse(".DIR",e)
 $      endif
 $    loop_delete:

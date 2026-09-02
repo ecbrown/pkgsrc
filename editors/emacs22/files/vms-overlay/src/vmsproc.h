@@ -24,9 +24,9 @@ the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 struct mbx_iosb
 {
-  short status;
-  short size;
-  int   pid;
+  unsigned short status;
+  unsigned short size;
+  unsigned int   pid;
 };
 
 
@@ -48,7 +48,7 @@ typedef struct
 {
   enum { IDLE, WORKING, DRAINING }	state;
   int					efnum;
-  unsigned long				chan;		/* keep 32 bits */
+  unsigned short			chan;
   enum { UNKNOWN, PTY, NET, KBD }	impl;
   union
   {

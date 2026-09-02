@@ -211,7 +211,7 @@
 #endif
 
 #ifdef VMS
-#define VMS_SUPPORT vmsproc.elc vms-patch.elc vms-date.elc
+#define VMS_SUPPORT vmsproc.el vms-patch.el vms-date.elc
 #define VMS_SUPPORT_PRE44 vmsproc.elc vms_patch.elc vms_date.elc
 #else
 #define VMS_SUPPORT

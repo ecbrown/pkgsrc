@@ -978,7 +978,7 @@ struct ablocks
 #define ABLOCKS_BYTES (sizeof (struct ablocks) - BLOCK_PADDING)
 
 #define ABLOCK_ABASE(block) \
-  (((unsigned long) (block)->abase) <= (1 + 2 * ABLOCKS_SIZE)   \
+  (((EMACS_UINT) (block)->abase) <= (1 + 2 * ABLOCKS_SIZE)      \
    ? (struct ablocks *)(block)					\
    : (block)->abase)
 
@@ -990,7 +990,7 @@ struct ablocks
 #define ABLOCKS_BASE(abase) (abase)
 #else
 #define ABLOCKS_BASE(abase) \
-  (1 & (long) ABLOCKS_BUSY (abase) ? abase : ((void**)abase)[-1])
+  (1 & (EMACS_UINT) ABLOCKS_BUSY (abase) ? abase : ((void**)abase)[-1])
 #endif
 
 /* The list of free ablock.   */
@@ -1081,17 +1081,18 @@ lisp_align_malloc (nbytes, type)
 	  abase->blocks[i].x.next_free = free_ablock;
 	  free_ablock = &abase->blocks[i];
 	}
-      ABLOCKS_BUSY (abase) = (struct ablocks *) (long) aligned;
+      ABLOCKS_BUSY (abase) = (struct ablocks *) (EMACS_UINT) aligned;
 
       eassert (0 == ((EMACS_UINT)abase) % BLOCK_ALIGN);
       eassert (ABLOCK_ABASE (&abase->blocks[3]) == abase); /* 3 is arbitrary */
       eassert (ABLOCK_ABASE (&abase->blocks[0]) == abase);
       eassert (ABLOCKS_BASE (abase) == base);
-      eassert (aligned == (long) ABLOCKS_BUSY (abase));
+      eassert (aligned == (EMACS_UINT) ABLOCKS_BUSY (abase));
     }
 
   abase = ABLOCK_ABASE (free_ablock);
-  ABLOCKS_BUSY (abase) = (struct ablocks *) (2 + (long) ABLOCKS_BUSY (abase));
+  ABLOCKS_BUSY (abase)
+    = (struct ablocks *) (2 + (EMACS_UINT) ABLOCKS_BUSY (abase));
   val = free_ablock;
   free_ablock = free_ablock->x.next_free;
 
@@ -1123,11 +1124,12 @@ lisp_align_free (block)
   ablock->x.next_free = free_ablock;
   free_ablock = ablock;
   /* Update busy count.  */
-  ABLOCKS_BUSY (abase) = (struct ablocks *) (-2 + (long) ABLOCKS_BUSY (abase));
+  ABLOCKS_BUSY (abase)
+    = (struct ablocks *) ((EMACS_UINT) ABLOCKS_BUSY (abase) - 2);
 
-  if (2 > (long) ABLOCKS_BUSY (abase))
+  if (2 > (EMACS_UINT) ABLOCKS_BUSY (abase))
     { /* All the blocks are free.  */
-      int i = 0, aligned = (long) ABLOCKS_BUSY (abase);
+      int i = 0, aligned = (EMACS_UINT) ABLOCKS_BUSY (abase);
       struct ablock **tem = &free_ablock;
       struct ablock *atop = &abase->blocks[aligned ? ABLOCKS_SIZE : ABLOCKS_SIZE - 1];
 
@@ -1144,7 +1146,7 @@ lisp_align_free (block)
       eassert ((aligned & 1) == aligned);
       eassert (i == (aligned ? ABLOCKS_SIZE : ABLOCKS_SIZE - 1));
 #ifdef USE_POSIX_MEMALIGN
-      eassert ((unsigned long)ABLOCKS_BASE (abase) % BLOCK_ALIGN == 0);
+      eassert ((EMACS_UINT) ABLOCKS_BASE (abase) % BLOCK_ALIGN == 0);
 #endif
       free (ABLOCKS_BASE (abase));
     }
@@ -4646,6 +4648,13 @@ valid_pointer_p (p)
 {
 #ifdef WINDOWSNT
   return w32_valid_pointer_p (p, 16);
+#elif defined (VMS)
+  /* emacs_write scans VMS record data in user space before entering the C
+     RTL, so the usual invalid-buffer write probe can itself take an access
+     violation.  This debugging-only API explicitly permits -1 when the
+     platform cannot validate the address safely.  */
+  (void) p;
+  return -1;
 #else
   int fd;
 

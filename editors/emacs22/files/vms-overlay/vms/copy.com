@@ -21,7 +21,7 @@ $ len = f$length(default)
 $ node_p = f$locate("::", default) + 2
 $ if node_p .lt. len
 $  then
-$   default_node = f$extract(0,node_p,default)+"::"
+$   default_node = f$extract(0,node_p,default)
 $   default = f$extract(node_p,len,default)
 $   len = len - node_p
 $  endif
@@ -30,7 +30,7 @@ $ if dev_p .lt. len
 $  then
 $   default_dev = f$extract(0,dev_p,default)
 $   default = f$extract(dev_p+1,len,default)
-$   len = len - node_p - 1
+$   len = len - dev_p - 1
 $  endif
 $ default_dir = default
 $!DEBUG
@@ -39,6 +39,7 @@ $	dummy := 'default_dev'
 $	dummy := 'default_dir'
 $!NODEBUG
 $
+$ copy_status = 1
 $ prefix = ""
 $ postfix = ""
 $ i = 0
@@ -140,23 +141,17 @@ $     if dev_i .ge. 0
 $      then
 $       dev_e = f$trnlnm(_dev,,dev_i)
 $       dev_i = dev_i - 1
-$       __result = ""
-$       delete/symbol/local __result
-$       @'proc_dir'canonicaldir 'dev_e' __result
-$       dev_e = __result
 $!DEBUG
 $	dummy := 'dev_e'	!dev_e
 $!NODEBUG
-$!       if dev_e - "]" .nes. dev_e
-$	if dev_e - "]" .eqs. dev_e
+$       if dev_e - "]" .nes. dev_e
 $        then
-$!         newfile = (dev_e - "]") + (file_e - "[")
-$!        else
+$         newfile = (dev_e - "]") + (file_e - "[")
+$        else
 $	  if f$extract(f$length(dev_e)-1,1,dev_e) .nes. ":" then -
 		dev_e = dev_e + ":"
-$        endif
 $         newfile = dev_e + file_e
-$!        endif
+$        endif
 $       __result = ""
 $       delete/symbol/local __result
 $       @'proc_dir'canonicaldir 'newfile' __result
@@ -164,6 +159,8 @@ $!DEBUG
 $	dummy := '__result'	!__result
 $!NODEBUG
 $       @'proc' '__result' 'postfix' 'prefix'
+$       copy_result = $status
+$       if .not. copy_result .and. copy_status then copy_status = copy_result
 $       goto loop_devs
 $      endif
 $     goto loop_files
@@ -175,9 +172,12 @@ $    endif
 $   if f$search(__result) .nes. ""
 $    then
 $     copy '_node''_dev':'file_e' 'postfix' 'prefix'
+$     copy_result = $status
+$     if .not. copy_result .and. copy_status then copy_status = copy_result
 $    else
 $     write sys$error "%GNUCOPY-W-NOFILE, file ",_node,_dev,":",file_e," does not exist"
+$     if copy_status then copy_status = 2
 $    endif
 $   goto loop_files
 $  endif
-$ exit 1 + 0*f$verify(__save_verify)
+$ exit copy_status + 0*f$verify(__save_verify)

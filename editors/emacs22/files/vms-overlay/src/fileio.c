@@ -123,10 +123,12 @@ extern int errno;
 #include <fab.h>
 #include <nam.h>
 #include <rab.h>
+#include <unixio.h>
 
 extern char *sys_translate_unix (char *);
 extern int sys_creat (char *, int, int);
-extern int creat_copy_attrs (char *, char *);
+extern int creat_copy_attrs (char *, char *, char *, unsigned int);
+extern int rename_sans_version (char *, char *, int *);
 #endif
 
 #include "systime.h"
@@ -420,6 +422,239 @@ use the standard functions without calling themselves recursively.  */)
   return result;
 }
 
+#ifdef VMS
+/* Return nonzero when POS is quoted by an odd-length run of ODS-5
+   circumflex escapes.  START is the beginning of the native file name.  */
+static int
+vms_char_escaped_p (start, pos)
+     const unsigned char *start, *pos;
+{
+  int escaped = 0;
+
+  while (pos > start && pos[-1] == '^')
+    {
+      escaped = !escaped;
+      pos--;
+    }
+  return escaped;
+}
+
+/* Return nonzero for an unquoted native directory separator.  Slash is
+   deliberately left to IS_DIRECTORY_SEP, since it is Unix syntax on VMS.  */
+static int
+vms_native_directory_separator_p (start, pos)
+     const unsigned char *start, *pos;
+{
+  return ((*pos == ':' || *pos == ']' || *pos == '>')
+	  && !vms_char_escaped_p (start, pos));
+}
+
+/* Return nonzero when POS really separates a preceding name from a new
+   absolute native name at NEXT.  A device followed by its directory and the
+   adjacent directory groups emitted by RMS with NAM$M_NOCONCEAL belong to
+   one file specification; treating either boundary as embedded discarded
+   the physical device (and then the [000000.] root group).  */
+static int
+vms_embedded_name_separator_p (start, pos, next)
+     const unsigned char *start, *pos, *next;
+{
+  if (!vms_native_directory_separator_p (start, pos))
+    return 0;
+  if (*pos == ':')
+    {
+      /* Neither colon in a DECnet node delimiter starts a new file name.
+	 Likewise, the device colon and its following directory are parts of
+	 one native file specification.  */
+      if (*next == ':'
+	  || (pos > start && pos[-1] == ':'
+	      && !vms_char_escaped_p (start, pos - 1))
+	  || *next == '[' || *next == '<')
+	return 0;
+    }
+  /* RMS permits either bracket style independently for the root and
+     directory components, so preserve all four adjacent combinations.  */
+  if ((*pos == ']' || *pos == '>')
+      && (*next == '[' || *next == '<'))
+    return 0;
+  return 1;
+}
+
+static int
+vms_contains_unescaped (start, character)
+     const unsigned char *start;
+     int character;
+{
+  const unsigned char *p;
+
+  for (p = start; *p; p++)
+    {
+      if (*p == '^' && p[1])
+	{
+	  p++;
+	  continue;
+	}
+      if (*p == character)
+	return 1;
+    }
+  return 0;
+}
+
+/* Search backward in [START, END) for an unquoted byte in CHARACTERS.  */
+static unsigned char *
+vms_rindex_unescaped_any (start, end, characters)
+     unsigned char *start, *end;
+     const char *characters;
+{
+  while (end > start)
+    {
+      end--;
+      if (strchr (characters, *end)
+	  && !vms_char_escaped_p (start, end))
+	return end;
+    }
+  return 0;
+}
+
+/* Return the first/last occurrence of CHARACTER that is not quoted by the
+   ODS-5 circumflex escape.  END is exclusive for the reverse search.  A
+   doubled circumflex quotes a literal circumflex, so skipping the byte after
+   every circumflex also handles runs of escapes correctly.  */
+static char *
+vms_index_unescaped (start, character)
+     char *start;
+     int character;
+{
+  char *p;
+
+  for (p = start; *p; p++)
+    {
+      if (*p == '^' && p[1])
+	{
+	  p++;
+	  continue;
+	}
+      if (*p == character)
+	return p;
+    }
+  return 0;
+}
+
+static char *
+vms_rindex_unescaped (start, end, character)
+     char *start, *end;
+     int character;
+{
+  char *p, *found = 0;
+
+  for (p = start; p < end; p++)
+    {
+      if (*p == '^' && p + 1 < end)
+	{
+	  p++;
+	  continue;
+	}
+      if (*p == character)
+	found = p;
+    }
+  return found;
+}
+
+/* Legacy DEC C stat exposes a pointer-valued device field whose contents are
+   not a stable file identity.  RMS identifies a file by its physical device
+   ID and all three FID words.  */
+struct vms_file_identity
+{
+  unsigned char dvi[sizeof (((struct NAM *) 0)->nam$t_dvi)];
+  unsigned short fid[3];
+};
+
+static int
+vms_file_identity_from_name (name, identity)
+     const char *name;
+     struct vms_file_identity *identity;
+{
+  struct FAB fab = cc$rms_fab;
+  struct NAM nam = cc$rms_nam;
+  char esa[NAM$C_MAXRSS + 1];
+  unsigned long status;
+  size_t length;
+  size_t i;
+  unsigned int dvi_length;
+  int have_fid;
+
+  length = strlen (name);
+  if (length == 0 || length > NAM$C_MAXRSS)
+    {
+      errno = length == 0 ? EINVAL : ENAMETOOLONG;
+      return 0;
+    }
+
+  fab.fab$l_fna = (char *) name;
+  fab.fab$b_fns = (unsigned char) length;
+  fab.fab$l_nam = &nam;
+  nam.nam$l_esa = esa;
+  nam.nam$b_ess = NAM$C_MAXRSS;
+  nam.nam$b_nop |= NAM$M_NOCONCEAL;
+
+  status = SYS$PARSE (&fab, 0, 0);
+  if (!(status & 1))
+    goto rms_error;
+  status = SYS$SEARCH (&fab, 0, 0);
+  if (!(status & 1))
+    goto rms_error;
+  dvi_length = (unsigned char) nam.nam$t_dvi[0];
+  if (dvi_length == 0 || dvi_length >= sizeof nam.nam$t_dvi)
+    {
+      errno = EIO;
+      return 0;
+    }
+
+  /* SEARCH returns the DVI and FID for one resolution.  Copy both now so a
+     concurrent logical-name or symbolic-link change cannot mix identities
+     from two different resolutions.  NAM$T_DVI is a counted string.  */
+  bzero (identity, sizeof *identity);
+  bcopy (nam.nam$t_dvi, identity->dvi, dvi_length + 1);
+  bcopy (nam.nam$w_fid, identity->fid, sizeof identity->fid);
+  have_fid = 0;
+  for (i = 0; i < sizeof identity->fid / sizeof identity->fid[0]; i++)
+    if (identity->fid[i] != 0)
+      have_fid = 1;
+  if (!have_fid)
+    {
+      errno = EIO;
+      return 0;
+    }
+  return 1;
+
+ rms_error:
+  errno = EVMSERR;
+  vaxc$errno = status;
+  return 0;
+}
+
+static int
+vms_file_identity_from_fd (fd, identity)
+     int fd;
+     struct vms_file_identity *identity;
+{
+  char resultant[NAM$C_MAXRSS + 1];
+
+  if (getname (fd, resultant, 1) == 0)
+    return 0;
+  resultant[NAM$C_MAXRSS] = '\0';
+  return vms_file_identity_from_name (resultant, identity);
+}
+
+static int
+vms_same_file_identity_p (first, second)
+     const struct vms_file_identity *first, *second;
+{
+  return (first->dvi[0] == second->dvi[0]
+	  && memcmp (first->dvi, second->dvi, first->dvi[0] + 1) == 0
+	  && memcmp (first->fid, second->fid, sizeof first->fid) == 0);
+}
+#endif
+
 DEFUN ("file-name-directory", Ffile_name_directory, Sfile_name_directory,
        1, 1, 0,
        doc: /* Return the directory component in file name FILENAME.
@@ -455,7 +690,7 @@ on VMS, perhaps instead a string ending in `:', `]' or `>'.  */)
 
   while (p != beg && !IS_DIRECTORY_SEP (p[-1])
 #ifdef VMS
-	 && p[-1] != ':' && p[-1] != ']' && p[-1] != '>'
+	 && !vms_native_directory_separator_p (beg, p - 1)
 #endif /* VMS */
 #ifdef DOS_NT
 	 /* only recognise drive specifier at the beginning */
@@ -522,7 +757,7 @@ or the entire name if it contains no slash.  */)
 
   while (p != beg && !IS_DIRECTORY_SEP (p[-1])
 #ifdef VMS
-	 && p[-1] != ':' && p[-1] != ']' && p[-1] != '>'
+	 && !vms_native_directory_separator_p (beg, p - 1)
 #endif /* VMS */
 #ifdef DOS_NT
 	 /* only recognise drive specifier at beginning */
@@ -559,7 +794,6 @@ get a current directory to run processes in.  */)
   return Ffile_name_directory (filename);
 }
 
-
 char *
 file_name_as_directory (out, in)
      char *out, *in;
@@ -578,20 +812,24 @@ file_name_as_directory (out, in)
 
 #ifdef VMS
   /* Is it already a directory string? */
-  if (in[size] == ':' || in[size] == ']' || in[size] == '>')
+  if (vms_native_directory_separator_p ((unsigned char *) in,
+					 (unsigned char *) in + size))
     return out;
   /* Interpret a VMS-syntax file name as a directory.  The caller supplies
      the semantics, so an explicit ".DIR" suffix cannot be required.  */
-  else if (! index (in, '/'))
+  else if (!vms_contains_unescaped ((unsigned char *) in, '/'))
     {
       register char *p, *dot;
       char brack;
 
       /* x.dir -> [.x]
-	 dir:x.dir --> dir:[x]
+      dir:x.dir --> dir:[x]
 	 dir:[x]y.dir --> dir:[x.y] */
       p = in + size;
-      while (p != in && *p != ':' && *p != '>' && *p != ']') p--;
+      while (p != in
+	     && !vms_native_directory_separator_p ((unsigned char *) in,
+						   (unsigned char *) p))
+	p--;
       if (p != in)
 	{
 	  strncpy (out, in, p - in);
@@ -613,7 +851,7 @@ file_name_as_directory (out, in)
 	  brack = ']';
 	  strcpy (out, "[.");
 	}
-      dot = index (p, '.');
+      dot = vms_index_unescaped (p, '.');
       if (dot)
 	{
 	  /* blindly remove any extension */
@@ -698,11 +936,13 @@ directory_file_name (src, dst)
   long slen;
 #ifdef VMS
   long rlen;
+  int final_is_native;
   char * ptr, * rptr;
   char bracket;
+  char logical_name[NAM$C_MAXRSS + 1];
   struct FAB fab = cc$rms_fab;
   struct NAM nam = cc$rms_nam;
-  char esa[NAM$C_MAXRSS];
+  char esa[NAM$C_MAXRSS + 1];
 #endif /* VMS */
 
   slen = strlen (src);
@@ -715,45 +955,66 @@ directory_file_name (src, dst)
       dst[0] = '\0';
       return 0;
     }
-  if (! index (src, '/')
-      && (src[slen - 1] == ']'
-	  || src[slen - 1] == ':'
-	  || src[slen - 1] == '>'))
+  if (!vms_contains_unescaped ((unsigned char *) src, '/')
+      && vms_native_directory_separator_p ((unsigned char *) src,
+					   (unsigned char *) src + slen - 1))
     {
       /* VMS style - convert [x.y.z] to [x.y]z, [x] to [000000]x */
+      if (slen > NAM$C_MAXRSS)
+	{
+	  strcpy (dst, src);
+	  return 0;
+	}
       fab.fab$l_fna = src;
       fab.fab$b_fns = slen;
       fab.fab$l_nam = &nam;
       fab.fab$l_fop = FAB$M_NAM;
 
       nam.nam$l_esa = esa;
-      nam.nam$b_ess = sizeof esa;
+      nam.nam$b_ess = NAM$C_MAXRSS;
       nam.nam$b_nop |= NAM$M_SYNCHK;
 
       /* We call SYS$PARSE to handle such things as [--] for us. */
-      if (SYS$PARSE (&fab, 0, 0) == RMS$_NORMAL)
 	{
-	  slen = nam.nam$b_esl;
-	  if (esa[slen - 1] == ';' && esa[slen - 2] == '.')
-	    slen -= 2;
-	  esa[slen] = '\0';
-	  src = esa;
+	  unsigned long status = SYS$PARSE (&fab, 0, 0);
+
+	  if (status & 1)
+	    {
+	      slen = nam.nam$b_esl;
+	      if (slen >= 2 && esa[slen - 1] == ';' && esa[slen - 2] == '.')
+		slen -= 2;
+	      esa[slen] = '\0';
+	      src = esa;
+	    }
 	}
-      if (src[slen - 1] != ']' && src[slen - 1] != '>')
+      if (slen == 0)
+	{
+	  dst[0] = '\0';
+	  return 0;
+	}
+      final_is_native
+	= vms_native_directory_separator_p ((unsigned char *) src,
+					    (unsigned char *) src + slen - 1);
+      if (!final_is_native
+	  || (src[slen - 1] != ']' && src[slen - 1] != '>'))
 	{
 	  /* what about when we have logical_name:???? */
-	  if (src[slen - 1] == ':')
+	  if (final_is_native && src[slen - 1] == ':')
 	    {                   /* Xlate logical name and see what we get */
-	      ptr = strcpy (dst, src); /* upper case for getenv */
+	      ptr = strcpy (logical_name, src); /* upper case for getenv */
 	      while (*ptr)
 		{
 		  if ('a' <= *ptr && *ptr <= 'z')
 		    *ptr -= 040;
 		  ptr++;
 		}
-	      dst[slen - 1] = 0;        /* remove colon */
-	      if (!(src = egetenv (dst)))
-		return 0;
+	      logical_name[slen - 1] = 0;        /* remove colon */
+	      if (!(ptr = egetenv (logical_name)))
+		{
+		  strcpy (dst, src);
+		  return 0;
+		}
+	      src = ptr;
 	      /* should we jump to the beginning of this procedure?
 		 Good points: allows us to use logical names that xlate
 		 to Unix names,
@@ -762,7 +1023,10 @@ directory_file_name (src, dst)
 		 For now, I'll punt and always expect VMS names, and hope for
 		 the best! */
 	      slen = strlen (src);
-	      if (src[slen - 1] != ']' && src[slen - 1] != '>')
+	      if (slen == 0
+		  || !vms_native_directory_separator_p ((unsigned char *) src,
+						       (unsigned char *) src + slen - 1)
+		  || (src[slen - 1] != ']' && src[slen - 1] != '>'))
 		{ /* no recursion here! */
 		  strcpy (dst, src);
 		  return 0;
@@ -778,13 +1042,13 @@ directory_file_name (src, dst)
 
       /* If bracket is ']' or '>', bracket - 2 is the corresponding
 	 opening bracket.  */
-      ptr = index (src, bracket - 2);
+      ptr = vms_index_unescaped (src, bracket - 2);
       if (ptr == 0)
 	{ /* no opening bracket */
 	  strcpy (dst, src);
 	  return 0;
 	}
-      if (!(rptr = rindex (src, '.')))
+      if (!(rptr = vms_rindex_unescaped (ptr + 1, src + slen - 1, '.')))
 	rptr = ptr;
       slen = rptr - src;
       strncpy (dst, src, slen);
@@ -798,7 +1062,8 @@ directory_file_name (src, dst)
 	{
 	  /* If we have the top-level of a rooted directory (i.e. xx:[000000]),
 	     then translate the device and recurse. */
-	  if (dst[slen - 1] == ':'
+	  if (slen >= 2
+	      && dst[slen - 1] == ':'
 	      && dst[slen - 2] != ':'   /* skip decnet nodes */
 	      && strcmp (src + slen, "[000000]") == 0)
 	    {
@@ -806,7 +1071,11 @@ directory_file_name (src, dst)
 	      if ((ptr = egetenv (dst))
 		  && (rlen = strlen (ptr) - 1) > 0
 		  && (ptr[rlen] == ']' || ptr[rlen] == '>')
-		  && ptr[rlen - 1] == '.')
+		  && !vms_char_escaped_p ((unsigned char *) ptr,
+					  (unsigned char *) ptr + rlen)
+		  && ptr[rlen - 1] == '.'
+		  && !vms_char_escaped_p ((unsigned char *) ptr,
+					  (unsigned char *) ptr + rlen - 1))
 		{
 		  char * buf = (char *) alloca (strlen (ptr) + 1);
 		  strcpy (buf, ptr);
@@ -1216,7 +1485,7 @@ See also the function `substitute-in-file-name'.  */)
       && (drive || IS_DIRECTORY_SEP (nm[1])) && !is_escaped
 #endif
 #ifdef VMS
-      || index (nm, ':')
+      || vms_contains_unescaped (nm, ':')
 #endif /* VMS */
       )
     {
@@ -1250,6 +1519,13 @@ See also the function `substitute-in-file-name'.  */)
 	    lose = 1;
 
 #ifdef VMS
+	  /* An ODS-5 circumflex quotes the following byte.  Do not let a
+	     quoted slash, colon, bracket, dot, or semicolon alter syntax.  */
+	  if (p[0] == '^' && p[1])
+	    {
+	      p += 2;
+	      continue;
+	    }
 	  if (p[0] == '\\')
 	    lose = 1;
 	  if (p[0] == '/') {
@@ -1273,7 +1549,9 @@ See also the function `substitute-in-file-name'.  */)
 	    else
 #endif /* NO_HYPHENS_IN_FILENAMES */
 	      if (lbrack > rbrack
+		  && p > nm
 		  && ((p[-1] == '.' || p[-1] == '[' || p[-1] == '<')
+		      && !vms_char_escaped_p (nm, p - 1)
 		      && (p[1] == '.' || p[1] == ']' || p[1] == '>')))
 		lose = 1;
 #ifdef NO_HYPHENS_IN_FILENAMES
@@ -1302,10 +1580,11 @@ See also the function `substitute-in-file-name'.  */)
 	    else if (slash)
 	      nm = slash + 1;
 	    /* if node::dev:, move colon following dev */
-	    else if (colon && colon[-1] == ':')
+	    else if (colon > nm && colon[-1] == ':'
+		     && !vms_char_escaped_p (nm, colon - 1))
 	      colon = p;
 	    /* if dev1:dev2:, move nm to dev2: */
-	    else if (colon && colon[-1] != ':')
+	    else if (colon)
 	      {
 		nm = colon + 1;
 		colon = 0;
@@ -1327,7 +1606,7 @@ See also the function `substitute-in-file-name'.  */)
       if (!lose)
 	{
 #ifdef VMS
-	  if (index (nm, '/'))
+	  if (vms_contains_unescaped (nm, '/'))
 	    {
 	      nm = sys_translate_unix (nm);
 	      return make_specified_string (nm, -1, strlen (nm), multibyte);
@@ -1417,7 +1696,8 @@ See also the function `substitute-in-file-name'.  */)
 	{
 	  for (p = nm; *p && (!IS_DIRECTORY_SEP (*p)
 #ifdef VMS
-			      && *p != ':'
+			      && (*p != ':'
+				  || vms_char_escaped_p (nm, p))
 #endif /* VMS */
 			      ); p++);
 	  o = (unsigned char *) alloca (p - nm + 1);
@@ -1483,7 +1763,7 @@ See also the function `substitute-in-file-name'.  */)
       && !(IS_DIRECTORY_SEP (nm[0]) && IS_DIRECTORY_SEP (nm[1]))
 #endif
 #ifdef VMS
-      && !index (nm, ':')
+      && !vms_contains_unescaped (nm, ':')
 #endif
       && !newdir)
     {
@@ -1599,7 +1879,12 @@ See also the function `substitute-in-file-name'.  */)
   target = (unsigned char *) alloca (tlen + 4);
   target += 4;
 #else  /* not DOS_NT */
+#ifdef VMS
+  /* sys_translate_unix can add "[." to a relative path.  */
+  target = (unsigned char *) alloca (tlen + 2);
+#else
   target = (unsigned char *) alloca (tlen);
+#endif
 #endif /* not DOS_NT */
   *target = 0;
 
@@ -1626,7 +1911,7 @@ See also the function `substitute-in-file-name'.  */)
 
   strcat (target, nm);
 #ifdef VMS
-  if (index (target, '/'))
+  if (vms_contains_unescaped (target, '/'))
     strcpy (target, sys_translate_unix (target));
 #endif /* VMS */
 
@@ -1641,41 +1926,65 @@ See also the function `substitute-in-file-name'.  */)
   while (*p)
     {
 #ifdef VMS
-      if (*p != ']' && *p != '>' && *p != '-')
+	  if (*p == '^' && p[1])
+	    {
+	      *o++ = *p++;
+	      *o++ = *p++;
+	    }
+      else if (*p != ']' && *p != '>' && *p != '-')
 	{
-	  if (*p == '\\')
+	  if (*p == '\\' && p[1])
 	    p++;
 	  *o++ = *p++;
 	}
       else if ((p[0] == ']' || p[0] == '>') && p[0] == p[1] + 2)
 	/* brackets are offset from each other by 2 */
 	{
-	  p += 2;
-	  if (*p != '.' && *p != '-' && o[-1] != '.')
-	    /* convert [foo][bar] to [bar] */
-	    while (o[-1] != '[' && o[-1] != '<')
-	      o--;
-	  else if (*p == '-' && *o != '.')
-	    *--p = '.';
+	  unsigned char *opening;
+	  int final_dot;
+
+	  opening = vms_rindex_unescaped_any (target, o, "[<");
+	  if (!opening)
+	    *o++ = *p++;
+	  else
+	    {
+	      p += 2;
+	      final_dot = (o > target && o[-1] == '.'
+			   && !vms_char_escaped_p (target, o - 1));
+	      if (*p != '.' && *p != '-' && !final_dot)
+		/* convert [foo][bar] to [bar] */
+		o = opening + 1;
+	      else if (*p == '-' && *o != '.')
+		*--p = '.';
+	    }
 	}
-      else if (p[0] == '-' && o[-1] == '.'
+      else if (p[0] == '-' && o > target && o[-1] == '.'
+	       && !vms_char_escaped_p (target, o - 1)
 	       && (p[1] == '.' || p[1] == ']' || p[1] == '>'))
 	/* flush .foo.- ; leave - if stopped by '[' or '<' */
 	{
-	  do
-	    o--;
-	  while (o[-1] != '.' && o[-1] != '[' && o[-1] != '<');
-	  if (p[1] == '.')      /* foo.-.bar ==> bar.  */
-	    p += 2;
-	  else if (o[-1] == '.') /* '.foo.-]' ==> ']' */
-	    p++, o--;
-	  /* else [foo.-] ==> [-] */
+	  unsigned char *delimiter;
+
+	  delimiter = vms_rindex_unescaped_any (target, o - 1, ".[<");
+	  if (!delimiter)
+	    *o++ = *p++;
+	  else
+	    {
+	      o = delimiter + 1;
+	      if (p[1] == '.')      /* foo.-.bar ==> bar.  */
+		p += 2;
+	      else if (*delimiter == '.') /* '.foo.-]' ==> ']' */
+		p++, o--;
+	      /* else [foo.-] ==> [-] */
+	    }
 	}
       else
 	{
 #ifdef NO_HYPHENS_IN_FILENAMES
 	  if (*p == '-'
-	      && o[-1] != '[' && o[-1] != '<' && o[-1] != '.'
+	      && !(o > target
+		   && (o[-1] == '[' || o[-1] == '<' || o[-1] == '.')
+		   && !vms_char_escaped_p (target, o - 1))
 	      && p[1] != ']' && p[1] != '>' && p[1] != '.')
 	    *p = '_';
 #endif /* NO_HYPHENS_IN_FILENAMES */
@@ -1986,7 +2295,12 @@ See also the function `substitute-in-file-name'.")
   /* Now concatenate the directory and name to new space in the stack frame */
 
   tlen = (newdir ? strlen (newdir) + 1 : 0) + strlen (nm) + 1;
+#ifdef VMS
+  /* sys_translate_unix can add "[." to a relative path.  */
+  target = (unsigned char *) alloca (tlen + 2);
+#else
   target = (unsigned char *) alloca (tlen);
+#endif
   *target = 0;
 
   if (newdir)
@@ -2106,8 +2420,8 @@ file_name_absolute_p (filename)
   return
     (IS_DIRECTORY_SEP (*filename) || *filename == '~'
 #ifdef VMS
-     /* ??? This criterion is probably wrong for '<'.  */
-     || index (filename, ':') || index (filename, '<')
+     || vms_contains_unescaped (filename, ':')
+     || vms_contains_unescaped (filename, '<')
      || (*filename == '[' && (filename[1] != '-'
 			      || (filename[2] != '.' && filename[2] != ']'))
 	 && filename[1] != '.')
@@ -2129,9 +2443,15 @@ search_embedded_absfilename (nm, endp)
     {
       if ((0
 #ifdef VMS
-	   || p[-1] == ':' || p[-1] == ']' || p[-1] == '>'
+	   || vms_embedded_name_separator_p (nm, p - 1, p)
+	   /* DIRECTORY_SEP is slash on VMS.  Like native delimiters, a slash
+	      quoted by an ODS-5 circumflex is filename data, not a boundary.  */
+	   || (IS_DIRECTORY_SEP (p[-1])
+	       && !vms_char_escaped_p (nm, p - 1))
+#else
+	   || IS_DIRECTORY_SEP (p[-1])
 #endif /* VMS */
-	   || IS_DIRECTORY_SEP (p[-1]))
+	   )
 	  && file_name_absolute_p (p)
 #if defined (APOLLO) || defined (WINDOWSNT) || defined(CYGWIN)
 	  /* // at start of file name is meaningful in Apollo,
@@ -2142,7 +2462,8 @@ search_embedded_absfilename (nm, endp)
 	{
 	  for (s = p; *s && (!IS_DIRECTORY_SEP (*s)
 #ifdef VMS
-			      && *s != ':'
+			      && (*s != ':'
+				  || vms_char_escaped_p (p, s))
 #endif /* VMS */
 			      ); s++);
 	  if (p[0] == '~' && s > p + 1)	/* we've got "/~something/" */
@@ -2376,8 +2697,11 @@ expand_and_dir_to_file (filename, defdir)
   absname = Fexpand_file_name (filename, defdir);
 #ifdef VMS
   {
-    register int c = SREF (absname, SBYTES (absname) - 1);
-    if (c == ':' || c == ']' || c == '>')
+    int nbytes = SBYTES (absname);
+
+    if (nbytes > 0
+	&& vms_native_directory_separator_p (SDATA (absname),
+					     SDATA (absname) + nbytes - 1))
       absname = Fdirectory_file_name (absname);
   }
 #else
@@ -2488,6 +2812,9 @@ uid and gid of FILE to NEWNAME.  */)
   int count = SPECPDL_INDEX ();
   int input_file_statable_p;
   Lisp_Object encoded_file, encoded_newname;
+#ifdef VMS
+  struct vms_file_identity input_identity, output_identity;
+#endif
 
   encoded_file = encoded_newname = Qnil;
   GCPRO4 (file, newname, encoded_file, encoded_newname);
@@ -2564,13 +2891,33 @@ uid and gid of FILE to NEWNAME.  */)
   input_file_statable_p = (fstat (ifd, &st) >= 0);
 
 #if !defined (MSDOS) || __DJGPP__ > 1
-  if (out_st.st_mode != 0
-      && st.st_dev == out_st.st_dev && st.st_ino == out_st.st_ino)
+#ifdef VMS
+  if (out_st.st_mode != 0)
+    {
+      /* Pin the source identity to the exact version that IFd opened.  If an
+	 existing destination cannot be identified, fail closed rather than risk
+	 copying over the source through a logical name or hard-link alias.  */
+      if (!vms_file_identity_from_fd (ifd, &input_identity))
+	report_file_error ("Identifying input file", Fcons (file, Qnil));
+      if (!vms_file_identity_from_name (SDATA (encoded_newname),
+					 &output_identity))
+	report_file_error ("Identifying output file", Fcons (newname, Qnil));
+      if (vms_same_file_identity_p (&input_identity, &output_identity))
+	{
+	  errno = 0;
+	  report_file_error ("Input and output files are the same",
+			     Fcons (file, Fcons (newname, Qnil)));
+	}
+    }
+#else
+  if (input_file_statable_p && out_st.st_mode != 0
+	  && st.st_dev == out_st.st_dev && st.st_ino == out_st.st_ino)
     {
       errno = 0;
       report_file_error ("Input and output files are the same",
 			 Fcons (file, Fcons (newname, Qnil)));
     }
+#endif
 #endif
 
 #if defined (S_ISREG) && defined (S_ISLNK)
@@ -2614,7 +2961,10 @@ uid and gid of FILE to NEWNAME.  */)
   while ((n = emacs_read (ifd, buf, sizeof buf)) > 0)
     if (emacs_write (ofd, buf, n) != n)
       report_file_error ("I/O error", Fcons (newname, Qnil));
-  FLUSH_EMACS_WRITE_BUFFER (ofd);
+  if (n < 0)
+    report_file_error ("I/O error reading input file", Fcons (file, Qnil));
+  if (FLUSH_EMACS_WRITE_BUFFER (ofd) < 0)
+    report_file_error ("I/O error", Fcons (newname, Qnil));
   immediate_quit = 0;
 
 #ifndef MSDOS
@@ -3319,7 +3669,13 @@ points to a nonexistent file.  */)
   while (valsize >= bufsize);
 
   val = make_string (buf, valsize);
-  if (buf[0] == '/' && index (buf, ':'))
+  if (buf[0] == '/'
+#ifdef VMS
+      && vms_contains_unescaped ((unsigned char *) buf, ':')
+#else
+      && index (buf, ':')
+#endif
+      )
     val = concat2 (build_string ("/:"), val);
   xfree (buf);
   val = DECODE_FILE (val);
@@ -5027,6 +5383,10 @@ This does code conversion according to the value of
   int count1;
 #ifdef VMS
   unsigned char *fname = 0;     /* If non-0, original filename (must rename) */
+  char vms_created_name[NAM$C_MAXRSS + 1];
+  int vms_temp_renamed = 0;
+  int vms_cleanup_errno;
+  int vms_cleanup_vaxc_errno;
 #endif /* VMS */
   Lisp_Object handler;
   Lisp_Object visit_file;
@@ -5172,7 +5532,7 @@ This does code conversion according to the value of
 	if (desc < 0)
 	  desc = creat_copy_attrs (STRINGP (current_buffer->filename)
 				   ? SDATA (current_buffer->filename) : 0,
-				   fn);
+				   fn, 0, 0);
       }
     else                /* Write to temporary name and rename if no errors */
       {
@@ -5185,7 +5545,10 @@ This does code conversion according to the value of
 						  build_string ("$$SAVE$$")));
 	    fname = SDATA (filename);
 	    fn = SDATA (temp_name);
-	    desc = creat_copy_attrs (fname, fn);
+	    desc = creat_copy_attrs (fname, fn, vms_created_name,
+				     sizeof vms_created_name);
+	    if (desc >= 0)
+	      fn = (unsigned char *) vms_created_name;
 	    if (desc < 0)
 	      {
 		/* If we can't open the temporary file, try creating a new
@@ -5380,7 +5743,20 @@ This does code conversion according to the value of
   if (fname)
     {
       if (!failure)
-	failure = (rename (fn, fname) != 0), save_errno = errno;
+	failure = (rename_sans_version (fn, fname, &vms_temp_renamed) != 0),
+	  save_errno = errno;
+
+      /* Before a successful rename, FN is the exact temporary version and is
+	 safe to remove.  After the rename, the destination exists even if its
+	 protection could not be restored, so do not remove anything then.  */
+      if (failure && !vms_temp_renamed)
+	{
+	  vms_cleanup_errno = errno;
+	  vms_cleanup_vaxc_errno = vaxc$errno;
+	  remove ((char *) fn);
+	  errno = vms_cleanup_errno;
+	  vaxc$errno = vms_cleanup_vaxc_errno;
+	}
       fn = fname;
     }
 #endif /* VMS */
@@ -5692,7 +6068,8 @@ e_write (desc, string, start, end, coding)
       if (coding->cmp_data)
 	coding_adjust_composition_offset (coding, start);
     }
-  FLUSH_EMACS_WRITE_BUFFER (desc);
+  if (FLUSH_EMACS_WRITE_BUFFER (desc) < 0)
+    return_val = -1;
 
   if (coding->cmp_data)
     coding_free_composition_data (coding);

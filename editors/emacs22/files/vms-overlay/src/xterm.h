@@ -31,6 +31,17 @@ Boston, MA 02110-1301, USA.  */
 #include <X11/Xatom.h>
 #include <X11/Xresource.h>
 
+#ifdef VMS
+/* DECwindows supplies these OpenVMS-specific entry points in DECW$XLIBSHR,
+   but the current Xlib headers do not declare them.  The published interface
+   uses a K&R-style AST callback declaration, and existing OpenVMS clients use
+   both int- and void-returning AST routines.  Keep the declarations
+   deliberately unprototyped rather than imposing an incompatible callback
+   type; this still prevents an implicit-function declaration at each call.  */
+extern int XSelectAsyncEvent ();
+extern int XSelectAsyncInput ();
+#endif
+
 #ifdef USE_X_TOOLKIT
 #include <X11/StringDefs.h>
 #include <X11/IntrinsicP.h>	/* CoreP.h needs this */

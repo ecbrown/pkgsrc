@@ -327,12 +327,14 @@ GETOPTOBJS = getopt.obj, getopt1.obj $(ALLOCA)
 GETOPTDEPS = $(GETOPTOBJS) getopt.h
 getopt.h : $(srcdir)getopt_.h
 	copy $(srcdir)getopt_.h getopt.h
-getopt.obj : $(srcdir)getopt.c getopt.h $(srcdir)getopt_int.h $(srcdir)gettext.h
-getopt1.obj : $(srcdir)getopt1.c getopt.h $(srcdir)getopt_int.h
+getopt.obj : $(srcdir)getopt.c getopt.h $(srcdir)getopt_int.h \
+		$(srcdir)gettext.h [-.src]config.h
+getopt1.obj : $(srcdir)getopt1.c getopt.h $(srcdir)getopt_int.h \
+		[-.src]config.h
 
 REGEXPOBJ = regex.obj
 REGEXPDEPS = $(REGEXPOBJ) $(srcsrcdir)regex.h
-regex.obj : $(srcsrcdir)regex.c
+regex.obj : $(srcsrcdir)regex.c [-.src]config.h
 
 alloca.obj : $(srcdir)alloca.c
 	$(CC) $(ALLOCA_CFLAGS) $(srcdir)alloca.c /obj=alloca.obj
@@ -343,8 +345,8 @@ etags.exe : $(srcdir)etags.c $(GETOPTDEPS) $(REGEXPDEPS) \
 	link /exe=etags.exe etags.obj,$(GETOPTOBJS),$(REGEXPOBJ),-
 		[-.vms]vmslink.opt/opt
 
-ebrowse.exe : $(srcdir)ebrowse.c $(GETOPTDEPS)
-	$(CC) $(ALL_CFLAGS) $(srcdir)ebrowse.c /obj=ebrowse.obj
+ebrowse.exe : $(srcdir)ebrowse.c $(GETOPTDEPS) [-.src]config.h
+	$(CC) $(ALL_CFLAGS) /NAMES=SHORTENED $(srcdir)ebrowse.c /obj=ebrowse.obj
 	$(LD) $(LDFLAGS) /exe=$@ ebrowse.obj,$(GETOPTOBJS),-
 		[-.vms]vmslink.opt/opt
 
@@ -361,13 +363,14 @@ sorted-doc.obj : $(srcdir)sorted-doc.c
 sorted-doc.exe : $(SORTED_DOC_OBJS) [-.vms]vmslink.opt
 	$(LD)/exe=sorted-doc.exe sorted-doc.obj$(ALLOCA),[-.vms]vmslink.opt/opt
 
-b2m.exe : $(srcdir)b2m.c [-.src]config.h [-.vms]vmslink.opt
+b2m.exe : $(srcdir)b2m.c $(GETOPTDEPS) [-.src]config.h [-.vms]vmslink.opt
 	$(CC) $(ALL_CFLAGS) $(srcdir)b2m.c /obj=b2m.obj
 	$(LD)/exe=b2m.exe b2m.obj,$(GETOPTOBJS),[-.vms]vmslink.opt/opt
 
-movemail.exe : $(srcdir)movemail.c [-.src]config.h [-.vms]vmslink.opt
+movemail.exe : $(srcdir)movemail.c $(GETOPTDEPS) \
+		[-.src]config.h [-.vms]vmslink.opt
 	$(CC) $(ALL_CFLAGS) $(srcdir)movemail.c /obj=movemail.obj
-	$(LD)/exe=movemail.exe movemail.obj,[-.vms]vmslink.opt/opt
+	$(LD)/exe=movemail.exe movemail.obj,$(GETOPTOBJS),[-.vms]vmslink.opt/opt
 
 cvtmail.exe : $(srcdir)cvtmail.c [-.vms]vmslink.opt
 

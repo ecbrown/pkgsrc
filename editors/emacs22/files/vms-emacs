@@ -1,0 +1,8 @@
+#!/bin/sh
+# $NetBSD$
+
+# The native helper locates the image and dump and defines the rooted runtime
+# logical before launching Emacs.  Quoted "$@" preserves every argument
+# boundary from the calling GNV shell.
+emacs22_bindir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit $?
+exec "${emacs22_bindir}/emacs22-vms-path.exe" --launch "$@"

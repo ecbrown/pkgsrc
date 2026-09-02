@@ -323,7 +323,7 @@ start_vms_process_read (vpr)
 /* VMS provides 128 (2^7) event flags, grouped into four clusters of 32
    each.  System routines that take an event flag can set an output "mask"
    which is the single cluster where that event flag resides.  */
-#define MKMASK(flag) (1 << ((flag) % 32))
+#define MKMASK(flag) (1UL << ((unsigned) (flag) & 31))
 
 int
 sys_select (nDesc, rdsc, wdsc, edsc, timeout)
@@ -334,6 +334,8 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
   int nfds = 0, private_rdsc = 0;
   unsigned long mask, readMask, allMask;
   unsigned long saved_ast_flag;
+  unsigned long service_status;
+  int timer_armed = 0;
 
   readMask = 0;
   allMask = MKMASK (SYNCH_PROCESS_EVENT_FLAG);
@@ -350,14 +352,17 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
     }
 
   {
-    int i, j = private_rdsc;
-    for (i = 0; i < MAX_VMS_CHAN_STUFF; j >>= 1, i++)
+    int i;
+    for (i = 0; i < MAX_VMS_CHAN_STUFF; i++)
       {
-	register int k = MKMASK (ch_pool[i].efnum);
-	/* Pseudo file descriptor 1 and 2 are just unused placeholders.  */
-	if ((ch_pool[i].state != IDLE) && (i != 1) && (i != 2))
-	  allMask |= k;
-	if (i < nDesc && j & 1)
+	unsigned long k;
+	/* Idle entries and the stdout/stderr placeholders have no event
+	   flag.  In particular, never evaluate MKMASK for efnum == -1.  */
+	if (ch_pool[i].state == IDLE || ch_pool[i].efnum < 0)
+	  continue;
+	k = MKMASK (ch_pool[i].efnum);
+	allMask |= k;
+	if (i < nDesc && ((unsigned int) private_rdsc & (1UL << i)))
 	  readMask |= k;
       }
   }
@@ -369,7 +374,15 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
 
   /* Block interrupts and see what is already set.  */
   saved_ast_flag = sys$setast (0);
-  sys$readef (KEYBOARD_EVENT_FLAG, &mask);
+  if (saved_ast_flag != SS$_WASSET && saved_ast_flag != SS$_WASCLR)
+    {
+      errno = EVMSERR;
+      vaxc$errno = saved_ast_flag;
+      return -1;
+    }
+  service_status = sys$readef (KEYBOARD_EVENT_FLAG, &mask);
+  if (!(service_status & 1))
+    goto service_failure;
 
 #ifdef SELECTDEBUG
   fprintf (stderr, "  (saved_ast_flag=0x%x)\n", saved_ast_flag);
@@ -403,9 +416,16 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
 	  /* C RTL uses timer 1 for alarm(), so we use timer 2.
 	     (Is this still valid? --ttn)  */
 
-	  sys$cantim (2, 0);
-	  sys$clref (TIMER_EVENT_FLAG);
-	  sys$setimr (TIMER_EVENT_FLAG, &hltw, 0, 2);
+	  service_status = sys$cantim (2, 0);
+	  if (!(service_status & 1))
+	    goto service_failure;
+	  service_status = sys$clref (TIMER_EVENT_FLAG);
+	  if (!(service_status & 1))
+	    goto service_failure;
+	  service_status = sys$setimr (TIMER_EVENT_FLAG, &hltw, 0, 2);
+	  if (!(service_status & 1))
+	    goto service_failure;
+	  timer_armed = 1;
 	  waitMask |= allMask | MKMASK (TIMER_EVENT_FLAG);
 
 #ifdef SELECTDEBUG
@@ -413,11 +433,27 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
 		   secs, usecs, waitMask);
 #endif
 
-	  sys$setast (1);
-	  sys$wflor (KEYBOARD_EVENT_FLAG, waitMask);
-	  sys$setast (0);
-	  sys$cantim (2, 0);
-	  sys$readef (KEYBOARD_EVENT_FLAG, &mask);
+	  /* Do not enable AST delivery if the caller entered with it disabled.  */
+	  service_status = sys$setast (saved_ast_flag == SS$_WASSET);
+	  if (!(service_status & 1))
+	    goto service_failure;
+	  service_status = sys$wflor (KEYBOARD_EVENT_FLAG, waitMask);
+	  {
+	    unsigned long disable_status = sys$setast (0);
+	    if (!(disable_status & 1) && (service_status & 1))
+	      service_status = disable_status;
+	  }
+	  {
+	    unsigned long cancel_status = sys$cantim (2, 0);
+	    timer_armed = 0;
+	    if (!(cancel_status & 1) && (service_status & 1))
+	      service_status = cancel_status;
+	  }
+	  if (!(service_status & 1))
+	    goto service_failure;
+	  service_status = sys$readef (KEYBOARD_EVENT_FLAG, &mask);
+	  if (!(service_status & 1))
+	    goto service_failure;
 
 #ifdef SELECTDEBUG
 	  fprintf (stderr, "  Eventually, we get this mask: 0x%x\n", mask);
@@ -439,10 +475,18 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
 #ifdef SELECTDEBUG
 	fprintf (stderr, "  clearing the keyboard event flag\n");
 #endif
-	sys$clref (KEYBOARD_EVENT_FLAG);
+	service_status = sys$clref (KEYBOARD_EVENT_FLAG);
+	if (!(service_status & 1))
+	  goto service_failure;
       }
 
-    sys$setast (saved_ast_flag == SS$_WASSET);
+    service_status = sys$setast (saved_ast_flag == SS$_WASSET);
+    if (!(service_status & 1))
+      {
+	errno = EVMSERR;
+	vaxc$errno = service_status;
+	return -1;
+      }
 
     if (unexpected_p)
       {
@@ -467,11 +511,13 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
       int i;
       *rdsc = 0;
       nfds = 0;
-      for (i = 0; i < MAX_VMS_CHAN_STUFF; i++)
-	if (mask & MKMASK (ch_pool[i].efnum))
+      for (i = 0; i < nDesc && i < MAX_VMS_CHAN_STUFF; i++)
+	if (ch_pool[i].state != IDLE && ch_pool[i].efnum >= 0
+	    && ((unsigned int) private_rdsc & (1UL << i))
+	    && (mask & MKMASK (ch_pool[i].efnum)))
 	  {
 	    nfds++;
-	    *rdsc |= 1 << i;
+	    *rdsc |= (int) (1UL << i);
 	  }
 #ifdef SELECTDEBUG
       fprintf (stderr, "  returning %d, with the output mask 0x%x\n",
@@ -487,6 +533,14 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
   fprintf (stderr, "debugging sys_select (): END\n");
 #endif
   return nfds;
+
+ service_failure:
+  if (timer_armed)
+    sys$cantim (2, 0);
+  sys$setast (saved_ast_flag == SS$_WASSET);
+  errno = EVMSERR;
+  vaxc$errno = service_status;
+  return -1;
 }
 
 
@@ -514,6 +568,20 @@ sys_select (nDesc, rdsc, wdsc, edsc, timeout)
 #define NET_SOCKET(vch)		NET_CONTEXT (vch)
 #endif
 
+/* Return the completion status of the outstanding input request.  The
+   channel event flag can also be set by a process-completion AST, so the
+   event flag alone is not proof that the IOSB has been posted.  */
+static unsigned short
+vms_input_status (vch)
+     VMS_CHAN_STUFF *vch;
+{
+  if (vch->impl == PTY)
+    return PTY_STAT (vch, PTY_READBUF);
+  if (vch->impl == NET)
+    return NET_IOSB (vch).status;
+  return MBX_IOSB (vch).status;
+}
+
 #ifdef NETLIB
 unsigned int NETLIB_receive_ast (vch)
      VMS_CHAN_STUFF *vch;
@@ -530,26 +598,18 @@ vms_start_input (vch)
 {
   int status;
 
-  {
-    VMS_PROC_STUFF *vpr = 0;
-    int fd = vms_channel_to_fd (vch);
-    int i;
-    
-    for (i = 0; i < MAX_VMS_PROC_STUFF; i++)
-      if (proc_pool[i].process != 0
-	  && XINT (proc_pool[i].process->infd) == fd)
-	{
-	  vpr = &proc_pool[i];
-	  break;
-	}
-	 
-    if (vpr == 0 || vpr->process)
-      sys$clref (vch->efnum);
-  }
+  /* This used to scan proc_pool before clearing the flag, but the test was
+     true on every reachable path.  Check the service status before placing
+     an asynchronous request that relies on this event flag.  */
+  status = sys$clref (vch->efnum);
+  if (!(status & 1))
+    LIB$SIGNAL (status);
    
   if (vch->impl == PTY)
     {
 #ifdef HAVE_VMS_PTYS
+      PTY_STAT (vch, PTY_READBUF) = 0;
+      PTY_LEN (vch, PTY_READBUF) = 0;
       status = ptd$read (vch->efnum, vch->chan, 0, vch,
 			 PTY_STRUCT (vch, PTY_READBUF), PTYBUF_SIZE);
 #endif
@@ -557,6 +617,8 @@ vms_start_input (vch)
   else if (vch->impl == NET)
     {
 #ifdef HAVE_SOCKETS
+      NET_IOSB (vch).status = 0;
+      NET_IOSB (vch).size = 0;
 #ifdef MULTINET
       status = SYS$QIO (vch->efnum, NET_CONTEXT (vch), IO$_READVBLK,
 			&NET_IOSB (vch), 0, vch, NET_BUF (vch), NETBUFSIZ,
@@ -575,6 +637,8 @@ vms_start_input (vch)
     }
   else
     {
+      MBX_IOSB (vch).status = 0;
+      MBX_IOSB (vch).size = 0;
       status = SYS$QIO (vch->efnum, vch->chan, IO$_READVBLK,
 			&MBX_IOSB (vch), 0, vch, MBX_BUF (vch), MSGSIZE,
 			0, 0, 0, 0);
@@ -594,6 +658,7 @@ vms_read_fd (fd, buf, len, translate)
   char *chars;
   int nchars;
   unsigned long mask;
+  unsigned long service_status;
 
   if (!vch || vch->state == IDLE)
     {
@@ -601,41 +666,77 @@ vms_read_fd (fd, buf, len, translate)
       return -1;
     }
 
-  /* Return now if the channel is draining.  */
-  if (vch->state == DRAINING)
+  if (len < 0 || (len != 0 && buf == 0))
+    {
+      errno = EINVAL;
+      return -1;
+    }
+  if (len == 0)
     return 0;
 
-  /* Return now if there's nothing to read.  */
-  while (sys$readef (KEYBOARD_EVENT_FLAG, &mask),
-	 !(mask & (MKMASK (vch->efnum)
-		   | MKMASK (SYNCH_PROCESS_EVENT_FLAG))))
+  /* A process-completion AST also sets the channel event flag so the main
+     loop will notice the status change.  When that AST wins the race with
+     the outstanding input request, its IOSB status is still zero.  Do not
+     inspect or requeue that incomplete request.  A nonzero status, however,
+     means a final record completed before the process-exit AST and must be
+     delivered before reporting EOF.  */
+  if (vch->state == DRAINING)
     {
-      int Atemp = MKMASK (vch->efnum);
-      EMACS_TIME timeout;
-      EMACS_SET_SECS_USECS (timeout, 100000, 0);
-      if (sys_select (MAXDESC, &Atemp, 0, 0, &timeout) < 0)
+      if (vms_input_status (vch) == 0)
 	return 0;
     }
 
-  if (mask & MKMASK (SYNCH_PROCESS_EVENT_FLAG))
+  /* Return now if there's nothing to read.  */
+  for (;;)
+    {
+      SELECT_TYPE Atemp = (SELECT_TYPE) (1UL << fd);
+      EMACS_TIME timeout;
+
+      service_status = sys$readef (KEYBOARD_EVENT_FLAG, &mask);
+      if (!(service_status & 1))
+	{
+	  errno = EVMSERR;
+	  vaxc$errno = service_status;
+	  return -1;
+	}
+      if (mask & (MKMASK (vch->efnum)
+		  | MKMASK (SYNCH_PROCESS_EVENT_FLAG)))
+	break;
+      EMACS_SET_SECS_USECS (timeout, 100000, 0);
+      if (sys_select (MAXDESC, &Atemp, 0, 0, &timeout) < 0)
+	return errno == EINTR ? 0 : -1;
+    }
+
+  /* A child can exit after the initial DRAINING check and before READEF,
+     and synchronous call-process completion can coincide with a completed
+     mailbox read.  Prefer a posted IOSB so the last record is not lost;
+     only treat process completion as EOF while the input request is still
+     pending.  */
+  if (((mask & MKMASK (SYNCH_PROCESS_EVENT_FLAG))
+       || vch->state == DRAINING)
+      && vms_input_status (vch) == 0)
     return 0;
 
   /* Reading from net streams...  */
   if (vch->impl == NET)
     {
+      unsigned short io_status = NET_IOSB (vch).status;
+      unsigned short io_detail = NET_IOSB (vch).size;
+
       chars = NET_BUF (vch);
       nchars = NET_IOSB (vch).size;
-      if (!(NET_IOSB (vch).status & 1))
+      NET_IOSB (vch).status = 0;
+      NET_IOSB (vch).size = 0;
+      if (!(io_status & 1))
 	{
 	  /* If the connection has gone away, don't consider that an error.
 	     Instead, return 0 to mean EOF.  --ttn  */
-	  if (NET_IOSB (vch).size == EPIPE)
+	  if (io_detail == EPIPE)
 	    return 0;
-	  errno = NET_IOSB (vch).size;
-	  vaxc$errno = NET_IOSB (vch).status;
+	  errno = io_detail ? io_detail : EVMSERR;
+	  vaxc$errno = io_status;
 	  return -1;
 	}
-      NET_IOSB (vch).size = 0;
       /* If nchars == 0 the connection has gone away?  Try returning 0 here so
 	 `waiting_for_process_input' will terminate the stream.  */
       if (nchars == 0)
@@ -646,9 +747,21 @@ vms_read_fd (fd, buf, len, translate)
   else if (vch->impl == PTY)
     {
       char *p;
+      unsigned short io_status = PTY_STAT (vch, PTY_READBUF);
+
+      if (!(io_status & 1))
+	{
+	  if (io_status == (unsigned short) SS$_ENDOFFILE
+	      || io_status == (unsigned short) SS$_CANCEL)
+	    return 0;
+	  errno = EVMSERR;
+	  vaxc$errno = io_status;
+	  return -1;
+	}
 
       chars = PTY_BUF (vch, PTY_READBUF);
       nchars = PTY_LEN (vch, PTY_READBUF);
+      PTY_STAT (vch, PTY_READBUF) = 0;
       PTY_LEN (vch, PTY_READBUF) = 0;
 
       /* Remove carriage returns and NULs if translation is on.  */
@@ -665,8 +778,21 @@ vms_read_fd (fd, buf, len, translate)
   /* Reading from mbxs...  */
   else
     {
+      unsigned short io_status = MBX_IOSB (vch).status;
+
+      if (!(io_status & 1))
+	{
+	  if (io_status == (unsigned short) SS$_ENDOFFILE
+	      || io_status == (unsigned short) SS$_CANCEL)
+	    return 0;
+	  errno = EVMSERR;
+	  vaxc$errno = io_status;
+	  return -1;
+	}
+
       chars = MBX_BUF (vch);
       nchars = MBX_IOSB (vch).size;
+      MBX_IOSB (vch).status = 0;
       MBX_IOSB (vch).size = 0;
 
       /* Hack around VMS oddity of sending extraneous CR/LF characters for
@@ -692,12 +818,13 @@ vms_read_fd (fd, buf, len, translate)
   if (nchars > len) nchars = len;
   memcpy (buf, chars, nchars);
 
-  /* Queue another read to the channel.  */
-  vms_start_input (vch);
+  /* Queue another read only while the producer can still send data.  */
+  if (vch->state == WORKING)
+    vms_start_input (vch);
 
   /* We can't just return 0; if we do, `wait_reading_process_input' will
      think that the process has died.  so, do the following to fake it out.  */
-  if (nchars == 0)
+  if (nchars == 0 && vch->state == WORKING)
     {
       nchars = -1;
       errno = EWOULDBLOCK;
@@ -806,28 +933,45 @@ vms_write_mbx (vch, buf, len, translate)
 {
   int status, oldrwm;
   int xlen = len;
+  struct mbx_iosb iosb;
+
+  memset (&iosb, 0, sizeof iosb);
 
   /* Turn off resource-wait mode to prevent blocking on a full mbx.  */
   oldrwm = sys$setrwm (1);
+  if (oldrwm != SS$_WASSET && oldrwm != SS$_WASCLR)
+    {
+      errno = EVMSERR;
+      vaxc$errno = oldrwm;
+      return -1;
+    }
 
   /* As a special hack, if the buffer consists of the single character ^D,
      write EOF to the mailbox.  */
 
   if (len == 1 && buf[0] == '\004' && translate)
     status = SYS$QIOW (0, vch->chan, IO$_WRITEOF | IO$M_NOW,
-		       0, 0, 0, buf, xlen, 0, 0, 0, 0);
+		       &iosb, 0, 0, buf, xlen, 0, 0, 0, 0);
   else
     {
       /* Strip trailing newlines if translation is on.  */
       if (xlen > 0 && buf[xlen-1] == '\n' && translate)
 	--xlen;
       status = SYS$QIOW (0, vch->chan, IO$_WRITEVBLK | IO$M_NOW,
-			 0, 0, 0, buf, xlen, 0, 0, 0, 0);
+			 &iosb, 0, 0, buf, xlen, 0, 0, 0, 0);
     }
 
   /* Restore the previous state of resource-waiting.  */
   if (oldrwm == SS$_WASCLR)
-    sys$setrwm (0);
+    {
+      int restore_status = sys$setrwm (0);
+      if (!(restore_status & 1))
+	{
+	  errno = EVMSERR;
+	  vaxc$errno = restore_status;
+	  return -1;
+	}
+    }
 
   if (! (status & 1))
     {
@@ -839,6 +983,18 @@ vms_write_mbx (vch, buf, len, translate)
 	  vaxc$errno = status;
 	}
       
+      return -1;
+    }
+
+  if (!(iosb.status & 1))
+    {
+      if (iosb.status == (unsigned short) SS$_MBFULL)
+	errno = EWOULDBLOCK;
+      else
+	{
+	  errno = EVMSERR;
+	  vaxc$errno = iosb.status;
+	}
       return -1;
     }
 
@@ -855,7 +1011,7 @@ vms_write_net (vch, buf, len)
 {
   int status;
   int dum_0 = 0, dum_1 = 1;
-  short iosb[4];
+  unsigned short iosb[4];
 
   /* Do the write.  */
 #ifdef UCX
@@ -971,6 +1127,7 @@ vms_close_fd (fd)
      int fd;
 {
   VMS_CHAN_STUFF *vch = fd_to_vms_channel (fd);
+  int status;
 
   if (!vch || vch->state == IDLE)
     {
@@ -981,7 +1138,13 @@ vms_close_fd (fd)
 #ifdef HAVE_VMS_PTYS
   if (vch->impl == PTY)
     {
-      ptd$delete (vch->chan);
+      status = ptd$delete (vch->chan);
+      if (!(status & 1))
+	{
+	  errno = EVMSERR;
+	  vaxc$errno = status;
+	  return -1;
+	}
       free (vch->u.pty.pty_buffers);
     }
   else
@@ -994,7 +1157,8 @@ vms_close_fd (fd)
          the socket table in step before socket_close disconnects it.  */
       netlib_update_context_for_handle (NET_SOCKET (vch), NET_CONTEXT (vch));
 #endif
-      SOCKET_CLOSE (NET_SOCKET (vch));
+      if (SOCKET_CLOSE (NET_SOCKET (vch)) < 0)
+	return -1;
       if (NET_BUF (vch))
 	{
 	  free (NET_BUF (vch));
@@ -1004,7 +1168,13 @@ vms_close_fd (fd)
   else
 #endif
     {
-      SYS$DASSGN (vch->chan);
+      status = SYS$DASSGN (vch->chan);
+      if (!(status & 1))
+	{
+	  errno = EVMSERR;
+	  vaxc$errno = status;
+	  return -1;
+	}
       if (MBX_BUF (vch))
 	{
 	  free (MBX_BUF (vch));
@@ -1024,7 +1194,7 @@ vms_close_fd (fd)
 
 static int
 create_mbx (chan, buffer_factor)
-     int *chan;
+     unsigned short *chan;
      int buffer_factor;
 {
   int status;
@@ -1059,7 +1229,7 @@ vms_get_device_name (fd, dsc)
 #define FUNC_NAME "vms_get_device_name"
 {
   int status;
-  short retlen;
+  unsigned short retlen;
   VMS_CHAN_STUFF *vch = fd_to_vms_channel (fd);
   int dum_DVI$_DEVNAM = DVI$_DEVNAM;
 
@@ -1352,8 +1522,8 @@ socket (af, type, protocol)
     int af, type, protocol;
 {
   int status, i;
-  long net_chan;
-  short iosb[4];
+  unsigned short net_chan;
+  unsigned short iosb[4];
   
   $DESCRIPTOR (multinet_template, "INET0:");
 
@@ -1392,7 +1562,7 @@ connect (net_chan, name, namelen)
     struct sockaddr *name;
 {
   int status, i;
-  short iosb[4];
+  unsigned short iosb[4];
   
   struct sockaddr_in *name_in = (struct sockaddr_in *)name;
 
@@ -1427,9 +1597,9 @@ socket (af, type, protocol)
     int af, type, protocol;
 {
   int status, i;
-  long net_chan;
+  unsigned short net_chan;
   short sck_parm[2];
-  short iosb[4];
+  unsigned short iosb[4];
   struct sockaddr_in local_host = prototype_sockaddr;
   struct itlst lhst_adrs;
   struct itlst_1 lsck_adrs;
@@ -1501,7 +1671,7 @@ sys_connect (net_chan, name, namelen)
     struct sockaddr *name;
 {
   int status, i;
-  short iosb[4];
+  unsigned short iosb[4];
   struct sockaddr_in remote_host = prototype_sockaddr;
   struct sockaddr_in *name_in = (struct sockaddr_in *)name;
   struct itlst rhst_adrs;
@@ -1720,14 +1890,10 @@ VMSgetwd (buf, size)
   char curdir[256];
   char *getenv ();
   char *s;
-  short len;
+  unsigned short len;
   int status;
   size_t disk_len;
-  struct
-  {
-    int	  l;
-    char *a;
-  } d;
+  struct dsc$descriptor_s d;
 
   if (size == 0)
     {
@@ -1738,8 +1904,10 @@ VMSgetwd (buf, size)
   s = getenv ("SYS$DISK");
   disk_len = s ? strlen (s) : 0;
 
-  d.l = 255;
-  d.a = curdir;
+  d.dsc$w_length = sizeof curdir - 1;
+  d.dsc$b_dtype = DSC$K_DTYPE_T;
+  d.dsc$b_class = DSC$K_CLASS_S;
+  d.dsc$a_pointer = curdir;
   status = sys$setddir (0, &len, &d);
   if (!(status & 1))
     {
@@ -1799,6 +1967,10 @@ argv_to_line (argv, quote_arguments)
      unsigned char **argv;
      int quote_arguments;
 {
+  enum
+    {
+      vms_dcl_max_command = 1024
+    };
   int i;
   size_t total = 1;
   char *line, *out;
@@ -1806,20 +1978,33 @@ argv_to_line (argv, quote_arguments)
   for (i = 0; argv[i] != 0; i++)
     {
       const unsigned char *p;
-      size_t extra = strlen (argv[i]) + (i != 0);
-      if (quote_arguments && i != 0)
+      size_t argument_length = strlen (argv[i]);
+      size_t extra = argument_length + (i != 0);
+      int previous_apostrophe = 0;
+
+      if (quote_arguments)
 	{
-	  extra += 2;
+	  if (i != 0)
+	    extra += 2;
 	  for (p = argv[i]; *p; p++)
-	    if (*p == '"')
-	      extra++;
+	    {
+	      if (iscntrl (*p))
+		error ("Control character in OpenVMS process command");
+	      if (i == 0 && *p == '\'')
+		error ("Apostrophe in raw OpenVMS program command");
+	      if (i != 0 && *p == '\'' && previous_apostrophe)
+		error ("Adjacent apostrophes in OpenVMS process argument");
+	      previous_apostrophe = *p == '\'';
+	      if (i != 0 && *p == '"')
+		extra++;
+	    }
 	}
       if (extra > (size_t) -1 - total)
 	memory_full ();
       total += extra;
     }
 
-  if (total - 1 > USHRT_MAX)
+  if (total - 1 > vms_dcl_max_command)
     error ("OpenVMS command line too long");
 
   line = (char *) xmalloc (total);
@@ -2143,7 +2328,8 @@ finish_ast (vpr)
   register struct Lisp_Process *p = vpr->process;
   if (p)
     {
-      VMS_CHAN_STUFF *vch = fd_to_vms_channel (XINT (p->infd));
+      int fd = XINT (p->infd);
+      VMS_CHAN_STUFF *vch = fd_to_vms_channel (fd);
 
       /* Special-case the normal exit code.  */
       if ((vpr->finish_code & SS$_NORMAL) == SS$_NORMAL)
@@ -2155,9 +2341,12 @@ finish_ast (vpr)
       /* Stop waiting for the process output.  Do not immediately make
 	 the channel idle as that introduces a race condition in
 	 `wait_reading_process_input'.  Instead, allow it to drain.  */
-      vch->state = DRAINING;
-      FD_CLR (XINT (p->infd), &input_wait_mask);
-      FD_CLR (XINT (p->infd), &non_keyboard_wait_mask);
+      if (vch)
+	{
+	  vch->state = DRAINING;
+	  FD_CLR (fd, &input_wait_mask);
+	  FD_CLR (fd, &non_keyboard_wait_mask);
+	}
 
       /* Tell wait_reading_process_input that it needs to wake up and
 	 look around.  */
@@ -2165,7 +2354,8 @@ finish_ast (vpr)
 	EMACS_SET_SECS_USECS (*input_available_clear_time, 0, 0);
 
       /* Why is this necessary?  --ttn */
-      sys$setef (vch->efnum);
+      if (vch)
+	sys$setef (vch->efnum);
     }
 }
 
@@ -2272,7 +2462,7 @@ usage: (call-process PROGRAM &optional INFILE BUFFER DISPLAY &rest ARGS)  */)
 				   away a stupid warning below, in the
 				   call to lib$spawn().  RL  */
 
-  char buf[1024];
+  char buf[MSGSIZE + 1];
   char *hacked_program = 0;
   int count = SPECPDL_INDEX ();
   register unsigned char **new_argv
@@ -2547,7 +2737,8 @@ usage: (call-process PROGRAM &optional INFILE BUFFER DISPLAY &rest ARGS)  */)
 
     /* The fourth argument "1" is for VMS.  On other systems, it will just
        be ignored.  --  Richard Levitte */
-    while ((nread = tmp_read (fd[0], buf, sizeof buf, 1)) >= 0
+    /* Reserve one byte for the diagnostic-line terminator below.  */
+    while ((nread = tmp_read (fd[0], buf, sizeof buf - 1, 1)) >= 0
 	   || errno == EWOULDBLOCK)
       {
 #if 0
@@ -2576,7 +2767,7 @@ usage: (call-process PROGRAM &optional INFILE BUFFER DISPLAY &rest ARGS)  */)
 	       let's skip the rest...
 	       This should really be fdone a better way...
 	       -- Richard Levitte */
-	    while (status <= nread && buf[status] > 31) status++;
+		    while (status < nread && buf[status] > 31) status++;
             if (status)
               {
 		buf[status] = 0;

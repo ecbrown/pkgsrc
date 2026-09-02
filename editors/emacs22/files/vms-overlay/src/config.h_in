@@ -953,6 +953,12 @@ Boston, MA 02110-1301, USA.  */
 #define HAVE_BZERO 1
 #define POINTER_TYPE void
 
+/* The DEC C run-time library exports getopt and its state variables.  The
+   bundled GNU implementation is still required for getopt_long, so give the
+   complete replacement family a private namespace.  getopt_.h applies this
+   prefix consistently to both the implementation and its callers.  */
+#define __GETOPT_PREFIX rpl_
+
 /* vmsmap.c records this value in the dump header.  It need only agree
    between the writer and reader; retain the established VMS port value.  */
 #define EMACS_VERSION_EDIT 149

@@ -18,6 +18,14 @@
 #include <rmsdef.h>
 #endif
 #include "vmsdir.h"
+
+/* Keep Emacs's private VMS directory stream ABI distinct from the current
+   C RTL's <dirent.h> interface.  In particular, this port's closedir returns
+   void and its DIR and directory-entry layouts are private.  */
+#define opendir emacs_vms_opendir
+#define readdir emacs_vms_readdir
+#define readdirver emacs_vms_readdirver
+#define closedir emacs_vms_closedir
 #endif /* VMS */
 
 #define DIRBLKSIZ	512		/* size of directory block */
@@ -55,6 +63,9 @@ typedef struct
 
 extern DIR		*opendir();
 extern struct direct	*readdir();
+#ifdef VMS
+extern struct direct	*readdirver();
+#endif
 extern long		telldir();
 extern void		seekdir();
 extern void		closedir();

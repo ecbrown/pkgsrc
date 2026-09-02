@@ -98,6 +98,8 @@ Boston, MA 02110-1301, USA.  */
 #include <Xm/Xm.h>
 #include <Xm/DialogS.h>
 #include <Xm/FileSB.h>
+#include <Xm/List.h>
+#include <Xm/TextF.h>
 #endif
 
 /* Do the EDITRES protocol if running X11R5
@@ -5875,7 +5877,15 @@ or when you set the mouse color.  */);
 
   DEFVAR_BOOL ("display-hourglass", &display_hourglass_p,
     doc: /* Non-zero means Emacs displays an hourglass pointer on window systems.  */);
+#ifdef VMS
+  /* The C RTL implements SIGALRM with a user-mode timer AST.  Entering
+     DECwindows/Xlib from that AST (as show_hourglass does) can terminate an
+     x86-64 process with SS$_ASTFLT.  Keep the busy cursor opt-in on VMS; the
+     command itself continues to run normally without it.  */
+  display_hourglass_p = 0;
+#else
   display_hourglass_p = 1;
+#endif
 
   DEFVAR_LISP ("hourglass-delay", &Vhourglass_delay,
     doc: /* *Seconds to wait before displaying an hourglass pointer.

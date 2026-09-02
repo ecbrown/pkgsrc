@@ -40,3 +40,4 @@ sys$share:ucx$ipc_shr/share
 
 
 SYS$DISK:[-.vms]vmslib.olb/lib
+SYS$SHARE:DECC$SHR.EXE/SHAREABLE/SELECTIVE_SEARCH

@@ -246,6 +246,7 @@ extern int errno;
 #include <fibdef.h>
 #include <atrdef.h>
 #include <ctype.h>
+#include <limits.h>
 #include <string.h>
 #include <perror.h>
 #ifdef __GNUC__
@@ -409,12 +410,17 @@ char*
 get_current_dir_name ()
 {
   char *buf;
+#ifdef HAVE_GETCWD
+  char *new_buf;
+#endif
+#ifndef VMS
   char *pwd;
   struct stat dotstat, pwdstat;
+
   /* If PWD is accurate, use it instead of calling getwd.  PWD is
      sometimes a nicer name, and using it may avoid a fatal error if a
      parent directory is searchable but not readable.  */
-    if ((pwd = getenv ("PWD")) != 0
+  if ((pwd = getenv ("PWD")) != 0
       && (IS_DIRECTORY_SEP (*pwd) || (*pwd && IS_DEVICE_SEP (pwd[1])))
       && stat (pwd, &pwdstat) == 0
       && stat (".", &dotstat) == 0
@@ -430,8 +436,9 @@ get_current_dir_name ()
         return NULL;
       strcpy (buf, pwd);
     }
-#ifdef HAVE_GETCWD
   else
+#endif /* not VMS */
+#ifdef HAVE_GETCWD
     {
       size_t buf_size = 1024;
       buf = (char *) malloc (buf_size);
@@ -448,14 +455,25 @@ get_current_dir_name ()
               errno = tmp_errno;
               return NULL;
             }
-          buf_size *= 2;
-          buf = (char *) realloc (buf, buf_size);
-          if (!buf)
-            return NULL;
-        }
+	  if (buf_size > (size_t) -1 / 2)
+	    {
+	      free (buf);
+	      errno = ENOMEM;
+	      return NULL;
+	    }
+	  buf_size *= 2;
+	  new_buf = (char *) realloc (buf, buf_size);
+	  if (!new_buf)
+	    {
+	      int tmp_errno = errno ? errno : ENOMEM;
+	      free (buf);
+	      errno = tmp_errno;
+	      return NULL;
+	    }
+	  buf = new_buf;
+	}
     }
 #else
-  else
     {
       /* We need MAXPATHLEN here.  */
       buf = (char *) malloc (MAXPATHLEN + 1);
@@ -4352,7 +4370,13 @@ set_file_times (filename, atime, mtime)
   utb.actime = EMACS_SECS (atime);
   utb.modtime = EMACS_SECS (mtime);
 #endif
+#ifdef VMS
+  /* The bundled GNUVMSLIB declaration predates const-qualified POSIX
+     prototypes.  Its implementation only reads FILENAME.  */
+  return utime ((char *) filename, &utb);
+#else
   return utime (filename, &utb);
+#endif
 #endif /* not HAVE_UTIMES */
 }
 
@@ -4499,6 +4523,28 @@ rmdir (dpath)
 #include <chpdef.h>
 #include <jpidef.h>
 
+static int vms_rms_error (int);
+
+/* A FAB carries its file-name length in one unsigned byte.  Reject an
+   unrepresentable C string instead of silently wrapping the length and asking
+   RMS to operate on a prefix of a different file name.  */
+static int
+vms_set_fab_name (fab, name)
+     struct FAB *fab;
+     const char *name;
+{
+  size_t length = strlen (name);
+
+  if (length > UCHAR_MAX)
+    {
+      errno = ENAMETOOLONG;
+      return -1;
+    }
+  fab->fab$l_fna = (char *) name;
+  fab->fab$b_fns = (unsigned char) length;
+  return 0;
+}
+
 /* Return as a string the VMS error string pertaining to STATUS.
    Reuses the same static buffer each time it is called.  */
 
@@ -4506,14 +4552,18 @@ char *
 vmserrstr (status)
      int status;		/* VMS status code */
 {
-  int bufadr[2];
-  short len;
+  struct dsc$descriptor_s bufdesc;
+  unsigned short len = 0;
   static char buf[257];
 
-  bufadr[0] = sizeof buf - 1;
-  bufadr[1] = (int) buf;
-  if (! (SYS$GETMSG (status, &len, bufadr, 0x1, 0) & 1))
+  bufdesc.dsc$w_length = sizeof buf - 1;
+  bufdesc.dsc$b_dtype = DSC$K_DTYPE_T;
+  bufdesc.dsc$b_class = DSC$K_CLASS_S;
+  bufdesc.dsc$a_pointer = buf;
+  if (! (SYS$GETMSG (status, &len, &bufdesc, 0x1, 0) & 1))
     return "untranslatable VMS error status";
+  if (len >= sizeof buf)
+    len = sizeof buf - 1;
   buf[len] = '\0';
   return buf;
 }
@@ -4551,7 +4601,7 @@ sys_access_reinit (void)
 #define SETPRV_ARG4(x)		(x)
 #define CHKPRIV(x,bit)		((x).(bit))
 #define BYPASS_PRIVELEGE	PRV$V_BYPASS
-#define SYSTEM_PREVELEGE	PRV$V_SYSPRV
+#define SYSTEM_PRIVELEGE	PRV$V_SYSPRV
 
 #else /* !defined (SETPRV_ARG4_IS_PTRUNION) */
 
@@ -4570,6 +4620,8 @@ sys_access (const char *filename, int type)
   struct XABPRO xab;
   int status;
   unsigned int aclbuf[60];
+  char *allocated_acl = 0;
+  unsigned int allocated_acl_size = 0;
   PRVMASK_TYPE prvmask;
 
   /* Get UIC and GRP values for protection checking.  */
@@ -4599,56 +4651,130 @@ sys_access (const char *filename, int type)
 
   fab = cc$rms_fab;
   fab.fab$b_fac = FAB$M_GET;
-  fab.fab$l_fna = (char *) filename;
-  fab.fab$b_fns = strlen (filename);
+  if (vms_set_fab_name (&fab, filename) < 0)
+    return -1;
   fab.fab$l_xab = &xab;
   xab = cc$rms_xabpro;
   xab.xab$l_aclbuf = aclbuf;
   xab.xab$w_aclsiz = sizeof (aclbuf);
   status = SYS$OPEN (&fab, 0, 0);
   if (! (status & 1))
-    return -1;
-  SYS$CLOSE (&fab, 0, 0);
+    return vms_rms_error (status);
+  status = SYS$CLOSE (&fab, 0, 0);
+  if (! (status & 1))
+    return vms_rms_error (status);
 
   /* Check system access.  */
   if (CHKPRIV (prvmask, SYSTEM_PRIVELEGE) && WRITEABLE (XAB$V_SYS))
     return 0;
 
+  /* RMS reports the full ACL length even if the supplied buffer was too
+     small.  Reopen with enough space instead of trusting that length when
+     walking ACLBUF.  The length can still change between opens, so retain a
+     bound check below.  */
+  if (xab.xab$w_acllen > sizeof aclbuf)
+    {
+      allocated_acl_size = xab.xab$w_acllen;
+      allocated_acl = (char *) xmalloc (allocated_acl_size);
+      xab.xab$l_aclbuf = allocated_acl;
+      xab.xab$w_aclsiz = allocated_acl_size;
+
+      status = SYS$OPEN (&fab, 0, 0);
+      if (! (status & 1))
+	{
+	  xfree (allocated_acl);
+	  return vms_rms_error (status);
+	}
+      status = SYS$CLOSE (&fab, 0, 0);
+      if (! (status & 1))
+	{
+	  xfree (allocated_acl);
+	  return vms_rms_error (status);
+	}
+      if (xab.xab$w_acllen > allocated_acl_size)
+	{
+	  xfree (allocated_acl);
+	  errno = EACCES;
+	  return -1;
+	}
+    }
+
   /* Check ACL entries, if any.  */
   if (xab.xab$w_acllen > 0)
     {
       int acl_controlled = 0;
-      unsigned int *aclptr = aclbuf;
-      unsigned int *aclend = &aclbuf[xab.xab$w_acllen / 4];
+      unsigned char *aclptr = ((unsigned char *)
+			       (allocated_acl ? allocated_acl : (char *) aclbuf));
+      unsigned char *aclend = aclptr + xab.xab$w_acllen;
 
-      while (*aclptr && aclptr < aclend)
+	while (aclptr < aclend)
 	{
-	  int size = (*aclptr & 0xff) / 4;
-	  int typecode = (*aclptr >> 8) & 0xff;
+	  unsigned int ace_length = aclptr[0];
+	  unsigned int *ace;
+	  int size;
+	  int typecode;
 	  int i;
 
+	  if (ace_length == 0)
+	    break;
+	  if (ace_length < sizeof (unsigned int)
+	      || ace_length > (unsigned int) (aclend - aclptr)
+	      || ace_length % sizeof (unsigned int) != 0)
+	    {
+	      if (allocated_acl)
+		xfree (allocated_acl);
+	      errno = EACCES;
+	      return -1;
+	    }
+
+	  ace = (unsigned int *) aclptr;
+	  size = ace_length / sizeof (unsigned int);
+	  typecode = aclptr[1];
 	  if (typecode == ACE$C_KEYID)
-	    for (i = size - 1; i > 1; i--)
-	      if (aclptr[i] == uic)
+	    {
+	      if (size < 3)
 		{
-		  acl_controlled = 1;
-		  if (aclptr[1] & ACE$M_WRITE)
-		    return 0;	/* Write access through ACL */
+		  if (allocated_acl)
+		    xfree (allocated_acl);
+		  errno = EACCES;
+		  return -1;
 		}
-	  aclptr = &aclptr[size];
+	      for (i = size - 1; i > 1; i--)
+		if (ace[i] == uic)
+		  {
+		    acl_controlled = 1;
+		    if (ace[1] & ACE$M_WRITE)
+		      {
+			if (allocated_acl)
+			  xfree (allocated_acl);
+			return 0;	/* Write access through ACL */
+		      }
+		  }
+	    }
+	  aclptr += ace_length;
 	}
       if (acl_controlled)	/* ACL specified, prohibits write access */
-	return -1;
+	{
+	  if (allocated_acl)
+	    xfree (allocated_acl);
+	  errno = EACCES;
+	  return -1;
+	}
     }
 
   /* Check normal protection: world-, group- and owner-writeable.  */
-  return ((WRITEABLE (XAB$V_WLD)
-	   || (WRITEABLE (XAB$V_GRP) &&
-	       (unsigned short) (xab.xab$l_uic >> 16) == grpid)
-	   || (WRITEABLE (XAB$V_OWN) &&
-	       (xab.xab$l_uic & 0xFFFF) == memid))
-	  ? 0			/* writeable */
-	  : -1);		/* not writeable */
+  status = ((WRITEABLE (XAB$V_WLD)
+	     || (WRITEABLE (XAB$V_GRP) &&
+		 (unsigned short) (xab.xab$l_uic >> 16) == grpid)
+	     || (WRITEABLE (XAB$V_OWN) &&
+		 (xab.xab$l_uic & 0xFFFF) == memid))
+	    ? 0			/* writeable */
+	    : -1);		/* not writeable */
+  if (allocated_acl)
+    xfree (allocated_acl);
+  if (status < 0)
+    errno = EACCES;
+  return status;
 
 #undef WRITEABLE
 }
@@ -4657,18 +4783,37 @@ sys_access (const char *filename, int type)
 #define access sys_access
 #endif /* VMS_NEED_SYS_ACCESS */
 
-static char vtbuf[NAM$C_MAXRSS+1];
+static char *vtbuf;
+static size_t vtbuf_size;
 
 /* translate a vms file spec to a unix path */
 char *
 sys_translate_vms (vfile)
      char * vfile;
 {
+  size_t needed;
   char * p;
   char * targ;
+  char close_delimiter;
 
   if (!vfile)
     return 0;
+
+  /* A hyphen in a directory component expands to "..".  Reserve for every
+     input byte expanding that way, plus the slashes added around a device
+     name and the terminating null byte.  */
+  needed = strlen (vfile);
+  if (needed > ((size_t) -1 - 3) / 2)
+    {
+      errno = ENAMETOOLONG;
+      return 0;
+    }
+  needed = needed * 2 + 3;
+  if (needed > vtbuf_size)
+    {
+      vtbuf = (char *) xrealloc (vtbuf, needed);
+      vtbuf_size = needed;
+    }
 
   targ = vtbuf;
 
@@ -4684,34 +4829,45 @@ sys_translate_vms (vfile)
   p = vfile;
   if (*p == '[' || *p == '<')
     {
-      while (*++vfile != *p + 2)
-	switch (*vfile)
+	close_delimiter = *p + 2;
+	vfile++;
+	while (*vfile && *vfile != close_delimiter)
 	  {
-	  case '.':
-	    if (vfile[-1] == *p)
-	      *targ++ = '.';
-	    *targ++ = '/';
-	    break;
+	    switch (*vfile)
+	      {
+	      case '.':
+		if (vfile[-1] == *p)
+		  *targ++ = '.';
+		*targ++ = '/';
+		break;
 
-	  case '-':
-	    *targ++ = '.';
-	    *targ++ = '.';
-	    break;
+	      case '-':
+		*targ++ = '.';
+		*targ++ = '.';
+		break;
 
-	  default:
-	    *targ++ = *vfile;
-	    break;
+	      default:
+		*targ++ = *vfile;
+		break;
+	      }
+	    vfile++;
 	  }
-      vfile++;
-      *targ++ = '/';
+	if (*vfile == close_delimiter)
+	  {
+	    vfile++;
+	    *targ++ = '/';
+	  }
     }
   while (*vfile)
     *targ++ = *vfile++;
 
+  *targ = '\0';
+
   return vtbuf;
 }
 
-static char utbuf[NAM$C_MAXRSS+1];
+static char *utbuf;
+static size_t utbuf_size;
 
 /* Translate a unix path to a VMS file spec.  */
 char *
@@ -4719,11 +4875,27 @@ sys_translate_unix (ufile)
      char * ufile;
 {
   int slash_seen = 0;
-  char *p;
+  size_t needed;
   char * targ;
 
   if (!ufile)
     return 0;
+
+  /* Translating a relative path can add at most the two characters "[.".
+     Do not let a long Unix name overrun the old NAM$C_MAXRSS-sized buffer;
+     RMS can reject an overlong native specification after safe translation. */
+  needed = strlen (ufile);
+  if (needed > (size_t) -1 - 3)
+    {
+      errno = ENAMETOOLONG;
+      return 0;
+    }
+  needed += 3;
+  if (needed > utbuf_size)
+    {
+      utbuf = (char *) xrealloc (utbuf, needed);
+      utbuf_size = needed;
+    }
 
   targ = utbuf;
 
@@ -4962,7 +5134,8 @@ sys_write (int fildes, const void *buf, unsigned int nbytes)
   int sum = 0;
   struct stat st;
 
-  fstat (fildes, &st);
+  if (fstat (fildes, &st) < 0)
+    return -1;
   p = buf;
   while (nbytes > 0)
     {
@@ -4972,17 +5145,33 @@ sys_write (int fildes, const void *buf, unsigned int nbytes)
       if (st.st_fab_rfm == FAB$C_FIX
 	  && ((st.st_fab_rat & (FAB$M_FTN | FAB$M_CR)) != 0))
 	{
-	  len = st.st_fab_mrs;
-	  retval = write (fildes, p, min (len, nbytes));
+	  len = min (st.st_fab_mrs, nbytes);
+	  if (len == 0)
+	    {
+	      errno = EIO;
+	      return -1;
+	    }
+	  retval = write (fildes, p, len);
 	  if (retval != len)
 	    return -1;
-	  retval++;	/* This skips the implied carriage control */
+	  p += retval;
+	  sum += retval;
+	  nbytes -= retval;
+	  /* A caller commonly supplies a newline after each complete fixed
+	     record.  It is carriage control, not part of the next record. */
+	  if (nbytes != 0 && *p == '\n')
+	    {
+	      p++;
+	      sum++;
+	      nbytes--;
+	    }
+	  continue;
 	}
       else
 	{
 	  e =  p + min (MAXIOSIZE, nbytes) - 1;
 	  while (*e != '\n' && e > p) e--;
-	  if (p == e)		/* Ok.. so here we add a newline... sigh. */
+	  if (*e != '\n')	/* Ok.. so here we add a newline... sigh. */
 	    e = p + min (MAXIOSIZE, nbytes) - 1;
 	  len = e + 1 - p;
 	  retval = write (fildes, p, len);
@@ -5003,23 +5192,45 @@ sys_write (int fildes, const void *buf, unsigned int nbytes)
    vms_stmlf_recfm. */
 
 /* Protection value the file should ultimately have.
-   Set by creat_copy_attrs, and use by rename_sans_version.  */
+   Set by creat_copy_attrs, and used by rename_sans_version.  */
 static unsigned short int fab_final_pro;
 
+static int
+vms_rms_error (status)
+     int status;
+{
+  errno = EVMSERR;
+  vaxc$errno = status;
+  return -1;
+}
+
 int
-creat_copy_attrs (old, new)
-     char *old, *new;
+creat_copy_attrs (old, new, actual_name, actual_size)
+     char *old, *new, *actual_name;
+     unsigned int actual_size;
 {
   struct FAB fab = cc$rms_fab;
+  struct NAM new_nam = cc$rms_nam;
   struct XABPRO xabpro;
   char aclbuf[256];	/* Choice of size is arbitrary.  See below. */
+  char new_rsn[NAM$C_MAXRSS + 1];
+  char *created_name;
+  int fd;
+  int saved_errno;
+  int saved_vaxc_errno;
+  int status;
+  unsigned int acl_size;
+  unsigned int created_length;
   extern int vms_stmlf_recfm;
+
+  if (actual_name && actual_size)
+    actual_name[0] = '\0';
 
   if (old)
     {
       fab.fab$b_fac = FAB$M_GET;
-      fab.fab$l_fna = old;
-      fab.fab$b_fns = strlen (old);
+      if (vms_set_fab_name (&fab, old) < 0)
+	return -1;
       fab.fab$l_xab = (char *) &xabpro;
       xabpro = cc$rms_xabpro;
       xabpro.xab$l_aclbuf = aclbuf;
@@ -5027,7 +5238,9 @@ creat_copy_attrs (old, new)
       /* Call $OPEN to fill in the fab & xabpro fields. */
       if (SYS$OPEN (&fab, 0, 0) & 1)
 	{
-	  SYS$CLOSE (&fab, 0, 0);
+	  status = SYS$CLOSE (&fab, 0, 0);
+	  if (!(status & 1))
+	    return vms_rms_error (status);
 	  fab.fab$l_alq = 0;	/* zero the allocation quantity */
 	  if (xabpro.xab$w_acllen > 0)
 	    {
@@ -5036,12 +5249,22 @@ creat_copy_attrs (old, new)
 		   Wouldn't need to do this if there were some system imposed
 		   limit on the size of an ACL, but I can't find any such. */
 		{
-		  xabpro.xab$l_aclbuf = (char *) alloca (xabpro.xab$w_acllen);
-		  xabpro.xab$w_aclsiz = xabpro.xab$w_acllen;
-		  if (SYS$OPEN (&fab, 0, 0) & 1)
-		    SYS$CLOSE (&fab, 0, 0);
-		  else
-		    old = 0;
+		  acl_size = xabpro.xab$w_acllen;
+		  xabpro.xab$l_aclbuf = (char *) alloca (acl_size);
+		  xabpro.xab$w_aclsiz = acl_size;
+		  status = SYS$OPEN (&fab, 0, 0);
+		  if (!(status & 1))
+		    return vms_rms_error (status);
+		  status = SYS$CLOSE (&fab, 0, 0);
+		  if (!(status & 1))
+		    return vms_rms_error (status);
+		  /* The ACL can change between opens.  Never pass an XAB whose
+		     reported data length exceeds the storage supplied for it.  */
+		  if (xabpro.xab$w_acllen > acl_size)
+		    {
+		      errno = EIO;
+		      return -1;
+		    }
 		}
 	    }
 	  else
@@ -5050,8 +5273,8 @@ creat_copy_attrs (old, new)
       else
 	old = 0;
     }
-  fab.fab$l_fna = new;
-  fab.fab$b_fns = strlen (new);
+  if (vms_set_fab_name (&fab, new) < 0)
+    return -1;
   if (!old)
     {
       fab.fab$l_xab = 0;
@@ -5063,19 +5286,61 @@ creat_copy_attrs (old, new)
      this file.  Once we are done writing and renaming it, we will set
      the protections back.  */
   if (old)
-    fab_final_pro = xabpro.xab$w_pro;
+    {
+      fab_final_pro = xabpro.xab$w_pro;
+      xabpro.xab$w_pro &= 0xff0f; /* set O:REWD until after the rename */
+    }
   else
-    SYS$SETDFPROT (0, &fab_final_pro);
-  xabpro.xab$w_pro &= 0xff0f; /* set O:rewd for now. This is set back later. */
+    {
+      status = SYS$SETDFPROT (0, &fab_final_pro);
+      if (!(status & 1))
+	return vms_rms_error (status);
+    }
+
+  /* Capture the actual version created, so a later cleanup cannot remove a
+     different version even if another process happens to use the same name. */
+  fab.fab$l_nam = &new_nam;
+  new_nam.nam$l_rsa = new_rsn;
+  new_nam.nam$b_rss = NAM$C_MAXRSS;
 
   /* Create the new file with either default attrs or attrs copied
      from old file. */
-  if (!(SYS$CREATE (&fab, 0, 0) & 1))
-    return -1;
-  SYS$CLOSE (&fab, 0, 0);
+  status = SYS$CREATE (&fab, 0, 0);
+  if (!(status & 1))
+    return vms_rms_error (status);
+
+  new_rsn[new_nam.nam$b_rsl] = '\0';
+  created_name = new_nam.nam$b_rsl ? new_rsn : new;
+
+  status = SYS$CLOSE (&fab, 0, 0);
+  if (!(status & 1))
+    {
+      remove (created_name);
+      return vms_rms_error (status);
+    }
+
+  created_length = strlen (created_name);
+  if (actual_name && actual_size <= created_length)
+    {
+      remove (created_name);
+      errno = ENAMETOOLONG;
+      return -1;
+    }
+
   /* As this is a "replacement" for creat, return a file descriptor
      opened for writing. */
-  return open (new, O_WRONLY);
+  fd = open (created_name, O_WRONLY);
+  if (fd < 0)
+    {
+      saved_errno = errno;
+      saved_vaxc_errno = vaxc$errno;
+      remove (created_name);
+      errno = saved_errno;
+      vaxc$errno = saved_vaxc_errno;
+    }
+  else if (actual_name)
+    memcpy (actual_name, created_name, created_length + 1);
+  return fd;
 }
 
 #ifdef VMS /* VMS_NEED_SYS_CREAT */
@@ -5104,7 +5369,8 @@ sys_creat (name, mode, rfd)
     {
       /* Use information from the related file descriptor to set record
 	 format of the newly created file. */
-      fstat (rfd, &st_buf);
+      if (fstat (rfd, &st_buf) < 0)
+	return -1;
       switch (st_buf.st_fab_rfm)
 	{
 	case FAB$C_FIX:
@@ -5160,6 +5426,10 @@ sys_creat (name, mode, rfd)
 	case FAB$C_VAR:
 	  strcpy (rfm, "rfm = var");
 	  break;
+
+	default:
+	  errno = EINVAL;
+	  return -1;
 	}
       strcpy (rat, "rat = ");
       if (st_buf.st_fab_rat & FAB$M_CR)
@@ -5182,12 +5452,10 @@ sys_creat (name, mode, rfd)
   /* Until the VAX C RTL fixes the many bugs with modes, always use
      mode 0 to get the user's default protection. */
   fd = creat (name, 0, rfm, rat);
-  if (fd < 0 && errno == EEXIST)
-    {
-      if (unlink (name) < 0)
-	report_file_error ("delete", build_string (name));
-      fd = creat (name, 0, rfm, rat);
-    }
+  /* Never implement supersede as unlink followed by create.  Besides being
+     non-atomic, a logical-name or version race could make that unlink remove
+     a file other than the one checked by Fcopy_file.  Normal VMS copies use
+     a new version; an explicitly existing version now fails safely.  */
   return fd;
 }
 #define creat sys_creat
@@ -5199,11 +5467,20 @@ size_t
 sys_fwrite (const void *ptr, size_t size, size_t num, FILE *fp)
 {
   const unsigned char *p = ptr;
-  size_t tot = num * size;
+  size_t done, tot;
 
-  while (tot--)
-    fputc (*p++, fp);
-  return num;
+  if (size == 0 || num == 0)
+    return 0;
+  if (num > (size_t) -1 / size)
+    {
+      errno = EOVERFLOW;
+      return 0;
+    }
+  tot = num * size;
+  for (done = 0; done < tot; done++)
+    if (fputc (*p++, fp) == EOF)
+      break;
+  return done / size;
 }
 #endif /* VMS_NEED_SYS_FWRITE */
 
@@ -5523,16 +5800,16 @@ rename (const char *from, const char *to)
   char from_esn[NAM$C_MAXRSS];
   char to_esn[NAM$C_MAXRSS];
 
-  from_fab.fab$l_fna = (char *) from;
-  from_fab.fab$b_fns = strlen (from);
+  if (vms_set_fab_name (&from_fab, from) < 0)
+    return -1;
   from_fab.fab$l_nam = &from_nam;
   from_fab.fab$l_fop = FAB$M_NAM;
 
   from_nam.nam$l_esa = from_esn;
   from_nam.nam$b_ess = sizeof from_esn;
 
-  to_fab.fab$l_fna = (char *) to;
-  to_fab.fab$b_fns = strlen (to);
+  if (vms_set_fab_name (&to_fab, to) < 0)
+    return -1;
   to_fab.fab$l_nam = &to_nam;
   to_fab.fab$l_fop = FAB$M_NAM;
 
@@ -5555,8 +5832,8 @@ rename (const char *from, const char *to)
 }
 
 /* This function renames a file like `rename', but it strips
-   the version number from the "to" filename, such that the "to" file is
-   will always be a new version.  It also sets the file protection once it is
+   the version number from the "to" filename, so that the "to" file will
+   always be a new version.  It also sets the file protection once it is
    finished.  The protection that we will use is stored in fab_final_pro,
    and was set when we did a creat_copy_attrs to create the file that we
    are renaming.
@@ -5567,74 +5844,123 @@ rename (const char *from, const char *to)
    the W and D bits together.  */
 
 
-static struct fibdef fib;	/* We need this initialized to zero */
-char vms_file_written[NAM$C_MAXRSS];
+char vms_file_written[NAM$C_MAXRSS + 1];
 
 int
-rename_sans_version (from, to)
+rename_sans_version (from, to, renamed)
      char *from, *to;
+     int *renamed;
 {
-  short int chan;
-  int stat;
-  short int iosb[4];
+  unsigned short int chan = 0;
+  unsigned short int iosb[4] = {0, 0, 0, 0};
+  int deassign_status;
+  int qio_status;
   int status;
+  struct fibdef fib = {0};
+  struct FAB from_fab = cc$rms_fab;
+  struct NAM from_nam = cc$rms_nam;
   struct FAB to_fab = cc$rms_fab;
   struct NAM to_nam = cc$rms_nam;
-  struct dsc$descriptor fib_d ={sizeof (fib),0,0,(char*) &fib};
+  struct dsc$descriptor fib_d = {sizeof (fib), 0, 0, (char *) &fib};
   struct dsc$descriptor fib_attr[2]
-    = {{sizeof (fab_final_pro),ATR$C_FPRO,0,(char*) &fab_final_pro},{0,0,0,0}};
-  char to_esn[NAM$C_MAXRSS];
+    = {{sizeof (fab_final_pro), ATR$C_FPRO, 0,
+	(char *) &fab_final_pro}, {0, 0, 0, 0}};
+  struct dsc$descriptor_s disk
+    = {0, DSC$K_DTYPE_T, DSC$K_CLASS_S, 0};
+  char from_esn[NAM$C_MAXRSS + 1];
+  char to_esn[NAM$C_MAXRSS + 1];
 
-  $DESCRIPTOR (disk,to_esn);
+  if (renamed)
+    *renamed = 0;
 
-  to_fab.fab$l_fna = to;
-  to_fab.fab$b_fns = strlen (to);
+  if (strlen (from) > NAM$C_MAXRSS || strlen (to) > NAM$C_MAXRSS)
+    {
+      errno = ENAMETOOLONG;
+      return -1;
+    }
+
+  if (vms_set_fab_name (&to_fab, to) < 0)
+    return -1;
   to_fab.fab$l_nam = &to_nam;
   to_fab.fab$l_fop = FAB$M_NAM;
 
   to_nam.nam$l_esa = to_esn;
-  to_nam.nam$b_ess = sizeof to_esn;
+  to_nam.nam$b_ess = NAM$C_MAXRSS;
 
   status = SYS$PARSE (&to_fab, 0, 0); /* figure out the full file name */
+  if (!(status & 1))
+    return vms_rms_error (status);
 
-  if (to_nam.nam$l_fnb && NAM$M_EXP_VER)
+  /* RMS returns a counted expanded string, not a C string.  Leave one byte
+     beyond its maximum length for the terminator.  */
+  to_esn[to_nam.nam$b_esl] = '\0';
+
+  if ((to_nam.nam$l_fnb & NAM$M_EXP_VER) != 0)
     *(to_nam.nam$l_ver) = '\0';
 
-  stat = rename (from, to_esn);
-  if (stat < 0)
-    return stat;
+  /* Get the temporary file's ID before renaming it.  The ID survives the
+     rename, so this cannot accidentally change a newer version created by a
+     concurrent writer.  */
+  from_fab.fab$b_fac = FAB$M_GET;
+  if (vms_set_fab_name (&from_fab, from) < 0)
+    return -1;
+  from_fab.fab$l_nam = &from_nam;
+  from_fab.fab$l_fop = FAB$M_NAM;
+  from_nam.nam$l_esa = from_esn;
+  from_nam.nam$b_ess = NAM$C_MAXRSS;
+
+  status = SYS$OPEN (&from_fab, 0, 0); /* This fills in the NAM fields. */
+  if (!(status & 1))
+    return vms_rms_error (status);
+
+  from_esn[from_nam.nam$b_esl] = '\0';
+
+  /* IO$_MODIFY identifies the file by FID.  Its other FIB access fields stay
+     zero; FIB$M_WRITE applies to IO$_ACCESS, not IO$_MODIFY.  */
+  fib.fib$w_fid[0] = from_nam.nam$w_fid[0];
+  fib.fib$w_fid[1] = from_nam.nam$w_fid[1];
+  fib.fib$w_fid[2] = from_nam.nam$w_fid[2];
+
+  /* Since no resultant area was supplied, these component fields point into
+     from_esn.  That local buffer remains live after SYS$CLOSE and through the
+     QIO.  */
+  disk.dsc$w_length = from_nam.nam$b_dev;
+  disk.dsc$a_pointer = from_nam.nam$l_dev;
+
+  status = SYS$CLOSE (&from_fab, 0, 0);
+  if (!(status & 1))
+    return vms_rms_error (status);
+
+  if (disk.dsc$w_length == 0 || disk.dsc$a_pointer == 0)
+    return vms_rms_error (RMS$_DEV);
+
+  if (rename (from, to_esn) < 0)
+    return -1;
+
+  if (renamed)
+    *renamed = 1;
 
   strcpy (vms_file_written, to_esn);
 
-  to_fab.fab$l_fna = vms_file_written; /* this points to the versionless name */
-  to_fab.fab$b_fns = strlen (vms_file_written);
+  /* Restore the protection recorded by creat_copy_attrs on the exact file
+     that was just renamed.  */
+  status = SYS$ASSIGN (&disk, &chan, 0, 0); /* open a channel to the disk */
+  if (!(status & 1))
+    return vms_rms_error (status);
 
-  /* Now set the file protection to the correct value */
-  SYS$OPEN (&to_fab, 0, 0);	/* This fills in the nam$w_fid fields */
+  qio_status = SYS$QIOW (0, chan, IO$_MODIFY, iosb, 0, 0, &fib_d,
+			 0, 0, 0, fib_attr, 0);
+  deassign_status = SYS$DASSGN (chan);
 
-  /* Copy these fields into the fib */
-/*
-  fib.fib$r_fid_overlay.fib$w_fid[0] = to_nam.nam$w_fid[0];
-  fib.fib$r_fid_overlay.fib$w_fid[1] = to_nam.nam$w_fid[1];
-  fib.fib$r_fid_overlay.fib$w_fid[2] = to_nam.nam$w_fid[2];
-*/
-  fib.fib$w_fid[0] = to_nam.nam$w_fid[0];
-  fib.fib$w_fid[1] = to_nam.nam$w_fid[1];
-  fib.fib$w_fid[2] = to_nam.nam$w_fid[2];
+  /* SYS$QIOW has both an immediate and an IOSB completion status.  The
+     channel must be deassigned regardless of either result.  */
+  if (!(qio_status & 1))
+    return vms_rms_error (qio_status);
+  if (!(iosb[0] & 1))
+    return vms_rms_error (iosb[0]);
+  if (!(deassign_status & 1))
+    return vms_rms_error (deassign_status);
 
-  SYS$CLOSE (&to_fab, 0, 0);
-
-  stat = SYS$ASSIGN (&disk, &chan, 0, 0); /* open a channel to the disk */
-  if (!stat)
-    LIB$SIGNAL (stat);
-  stat = SYS$QIOW (0, chan, IO$_MODIFY, iosb, 0, 0, &fib_d,
-		   0, 0, 0, &fib_attr, 0);
-  if (!stat)
-    LIB$SIGNAL (stat);
-  stat = SYS$DASSGN (chan);
-  if (!stat)
-    LIB$SIGNAL (stat);
-  strcpy (vms_file_written, to_esn); /* We will write this to the terminal*/
   return 0;
 }
 

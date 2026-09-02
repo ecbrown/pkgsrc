@@ -232,8 +232,15 @@ COPYDESTS = $(etcdir),$(lispdir)
 #	setup_config [.vms]rebuild.com $(SUBDIR)
 #	@ !
 all :	paths-force [.vms]runtemacs.com [.vms]vmslink.opt \
-	setup_config $(SUBDIR)
+	setup_config [.vms]pkgsrc_vms_path.exe $(SUBDIR)
 	@ !
+
+[.vms]pkgsrc_vms_path.obj : $(vmssrcdir)pkgsrc_vms_path.c
+	cc/prefix=all_entries/object=[.vms]pkgsrc_vms_path.obj -
+		$(vmssrcdir)pkgsrc_vms_path.c
+
+[.vms]pkgsrc_vms_path.exe : [.vms]pkgsrc_vms_path.obj
+	link/executable=[.vms]pkgsrc_vms_path.exe [.vms]pkgsrc_vms_path.obj
 
 debug : set_debug all
 	@ !
@@ -674,6 +681,8 @@ install-arch-dep : mkdir
 	set def [-]
 	$(INSTALL_PROGRAM) [.vms]temacs.exe $(bindir)emacs-$(version_us).exe /log
 	$(INSTALL_PROGRAM) [.vms]temacs.dump $(bindir)emacs-$(version_us).dump /log
+	$(INSTALL_PROGRAM) [.vms]pkgsrc_vms_path.exe -
+		$(bindir)emacs22-vms-path.exe /log
 	! $(INSTALL_PROGRAM) [.vms]rebuild.com $(bindir)rebuild-emacs-$(version_us).com /log
 	- purge/keep=2 $(bindir)emacs-$(version_us).exe,.dump /log
 	- ! purge $(bindir)rebuild-emacs-$(version_us).com /log
@@ -715,8 +724,8 @@ install-arch-indep : mkdir
 		if f$search("$(infodir)dir.") .eqs. "" -
 			.and.f$search("$(srcdir_dev)[$(srcdir_dir).info]dir.") .nes. "" then -
 				$(INSTALL_DATA) $(srcdir_dev)[$(srcdir_dir).info]dir. $(infodir)dir. /log
-	if .not.result then -
-		@$(vmssrcdir)loop_args f "ada-mode*.* autotype*.* ccmode*.* cl*.* dired-x*.* ebrowse*.* ediff*.* efaq*.* emacs*.* eshell*.* eudc*.* forms*.* gnus*.* idlwave*.* info*.* message*.* mh-e*.* pcl-cvs*.* reftex*.* sc*.* speedbar*.* vip*.* widget*.* woman*.*" " " "$(INSTALL_DATA_QUOTED) $(srcdir_dev)[$(srcdir_dir).info]'f' $(infodir) /log" ";" verbose
+		if .not.result then -
+			$(INSTALL_DATA) $(srcdir_dev)[$(srcdir_dir).info]*.* $(infodir) /exclude=(dir.*,COPYING.*) /log
 	- if .not.result then purge $(infodir) /log
 	@ result = "" ! So we do not get a stupid message on the next line...
 	-@ delete/sym/local result
@@ -731,10 +740,8 @@ install-arch-indep : mkdir
 	!	$(INSTALL_PROGRAM) [.vms]emacs_vue.com $(vuelibdir)emacs_vue-$(version_us).com /log
 	! - if .not.result then purge $(vuelibdir)emacs_vue.com /log
 	@ !
-	if f$search("$(mandir)gnu.hlb") .eqs. "" then -
-		library/create/help $(mandir)gnu.hlb
-	set file/prot=(w:r) $(mandir)gnu.hlb
-	-@ @$(vmssrcdir)loop_args page "emacs" " " "library/replace $(mandir)gnu.hlb $(srcdir_dev)[$(srcdir_dir).etc]'page'.hlp /log" ";" verbose
+	@ ! GNU.HLB is a shared system help library.  A relocatable binary package
+	@ ! must not replace or own the whole library; retain the private EMACS.HLP.
 
 install-doc : mkdir
 	sdir=f$environment("DEFAULT")-"]"+".ETC]"
@@ -775,7 +782,6 @@ uninstall :
 	@ line8 = "if dest - ""$(datadir_dev)[$(datadir_dir).EMACS.$(version_us)"" .nes. dest then @$(vmssrcdir)recurdel $(datadir_dev)[$(datadir_dir).EMACS]$(version_us).DIR"
 	@ @$(vmssrcdir)loop_args dir "$(lispdir),$(etcdir)" "," "'line1';'line2';'line3';'line4';'line5';'line6';'line7';'line8'" ";" verbose
 	- delete $(infodir)cl*.*;*,emacs*.*;*,forms*.*;*,info*.*;*,vip*.*;*
-	- library/delete $(mandir)gnu.hlb emacs,etags
 	- delete $(bindir)emacs-$(version_us).exe;*,.dump;*
 
 
@@ -833,6 +839,7 @@ mostlyclean : FRC.mostlyclean
 	set def [.vms]
 	$(MAKE) $(MMSQUALIFIERS) mostlyclean
 	set def [-]
+	@$(vmssrcdir)delete [.vms]pkgsrc_vms_path.obj
 
 ### `clean'
 ###      Delete all files from the current directory that are normally
@@ -862,6 +869,7 @@ clean : FRC.clean
 	set def [.vms]
 	$(MAKE) $(MMSQUALIFIERS) clean
 	set def [-]
+	@$(vmssrcdir)delete [.vms]pkgsrc_vms_path.obj,[.vms]pkgsrc_vms_path.exe
 
 ### `distclean'
 ###      Delete all files from the current directory that are created by

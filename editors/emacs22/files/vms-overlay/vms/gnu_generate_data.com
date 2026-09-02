@@ -35,6 +35,9 @@ $!
 $! The generated file will have a specific format, to make it possible to
 $! tuck in into a larger command file.
 $!
+$ tmp_status = 1
+$ keep := no
+$ gnu_extra_file :=
 $ open/read/error=noinfile1 gnu_data_file1 'p1'
 $ open/read/error=noinfile2 gnu_data_file2 'p2'
 $ open/write/error=nooutfile gnu_data_file3 'p3'
@@ -48,7 +51,7 @@ $ keep := yes
 $ current_symbol = ""
 $ __subst_symbols = ","
 $loop_file:
-$ read/error=loop_file_end/end=loop_file_end gnu_data_file2 line
+$ read/error=bugout/end=loop_file_end gnu_data_file2 line
 $! sh sym line
 $ first = f$extract(0,1,line)
 $ last = f$extract(f$length(line)-1,1,line)
@@ -69,7 +72,7 @@ $ goto loop_file
 $loop_file_end:
 $
 $loop_file2:
-$ read/error=nomore/end=nomore gnu_data_file1 line
+$ read/error=bugout/end=nomore gnu_data_file1 line
 $loop_subst1:
 $ i = 1
 $loop_subst2:
@@ -100,6 +103,7 @@ $ goto loop_file2
 $ 
 $bugout:
 $ tmp_status=$status
+$ set noon
 $ if "''gnu_extra_file'" .nes. ""
 $  then
 $   close 'gnu_extra_file
@@ -107,12 +111,16 @@ $  endif
 $ line0 = ""
 $ keep := no
 $nomore:
+$ if keep then tmp_status = 1
 $ close gnu_data_file3
 $ if .not. keep then delete 'f$parse(p3,".;*")'
 $nooutfile:
+$ if tmp_status .eq. 1 .and. .not. keep then tmp_status = $status
 $ close gnu_data_file2
 $noinfile2:
+$ if tmp_status .eq. 1 .and. .not. keep then tmp_status = $status
 $ close gnu_data_file1
 $noinfile1:
+$ if tmp_status .eq. 1 .and. .not. keep then tmp_status = $status
 $exit:
-$ exit
+$ exit tmp_status

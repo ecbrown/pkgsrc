@@ -3275,6 +3275,11 @@ extern void syms_of_xterm P_ ((void));
 EXFUN (Fmsdos_downcase_filename, 1);
 #endif
 
+#ifdef HAVE_MENUS
+/* Defined by the active window-system backend.  */
+extern int have_menus_p P_ ((void));
+#endif
+
 #ifdef MAC_OS
 /* Defined in macfns.c */
 extern void syms_of_macfns P_ ((void));

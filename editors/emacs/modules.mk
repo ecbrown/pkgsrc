@@ -45,11 +45,12 @@
 #			emacs31 emacs31nox
 #			emacs30 emacs30nox
 #			emacs29 emacs29nox
+#			emacs22 emacs22nox
 #			emacs21 emacs21nox
 #			emacs20 xemacs215 xemacs215nox
 #			xemacs214 xemacs214nox
 #		Default value:
-#			emacs29
+#			emacs30
 #
 # Variables ELPs can provide:
 #
@@ -69,6 +70,7 @@
 #			emacs31 emacs31nox
 #			emacs30 emacs30nox
 #			emacs29 emacs29nox
+#			emacs22 emacs22nox
 #			emacs21 emacs21nox
 #			emacs20 xemacs215 xemacs215nox
 #			xemacs214 xemacs214nox
@@ -76,6 +78,7 @@
 #			emacs31 emacs31nox
 #			emacs30 emacs30nox
 #			emacs29 emacs29nox
+#			emacs22 emacs22nox
 #			emacs21 emacs21nox
 #			emacs20 xemacs215 xemacs215nox
 #			xemacs214 xemacs214nox
@@ -141,7 +144,7 @@
 #		Description:
 #			Emacs major version.
 #		Possible values:
-#			20, 21, 29, 30, 31, <integers more than that in the future>
+#			20, 21, 22, 29, 30, 31, <integers more than that in the future>
 #
 #	EMACS_VERSION_MINOR
 #		Description:
@@ -187,10 +190,10 @@
 #		Possible values:
 #			XXX
 #
-#	FOR_{emacs31,emacs31nox,emacs30,emacs30nox,emacs29,emacs29nox,emacs21,emacs21nox,emacs20,xemacs215,xemacs215nox,xemacs214,xemacs214nox}
+#	FOR_{emacs31,emacs31nox,emacs30,emacs30nox,emacs29,emacs29nox,emacs22,emacs22nox,emacs21,emacs21nox,emacs20,xemacs215,xemacs215nox,xemacs214,xemacs214nox}
 #	FOR_{emacs,xemacs}
 #	FOR_{emacs_x,emacs_nox}
-#	NOTFOR_{emacs31,emacs31nox,emacs30, emacs30nox,emacs29,emacs29nox,emacs21,emacs21nox,emacs20,xemacs215,xemacs215nox,xemacs214,xemacs214nox}
+#	NOTFOR_{emacs31,emacs31nox,emacs30,emacs30nox,emacs29,emacs29nox,emacs22,emacs22nox,emacs21,emacs21nox,emacs20,xemacs215,xemacs215nox,xemacs214,xemacs214nox}
 #	NOTFOR_{emacs,xemacs}
 #	NOTFOR_{emacs_x,emacs_nox}
 #		Description:
@@ -237,7 +240,8 @@ BUILD_DEFS_EFFECTS+=	${_SYS_VARS.emacs}
 #
 
 _EMACS_VERSIONS_ALL= \
-	emacs20 emacs21 emacs21nox emacs29 emacs29nox  \
+	emacs20 emacs21 emacs21nox emacs22 emacs22nox \
+	emacs29 emacs29nox  \
 	emacs30 emacs30nox emacs31 emacs31nox \
 	xemacs214 xemacs214nox xemacs215 xemacs215nox
 
@@ -245,6 +249,8 @@ _EMACS_PKGDIR_MAP= \
 	emacs20@../../editors/emacs20 \
 	emacs21@../../editors/emacs21 \
 	emacs21nox@../../editors/emacs21-nox11 \
+	emacs22@../../editors/emacs22 \
+	emacs22nox@../../editors/emacs22-nox11 \
 	emacs29@../../editors/emacs29 \
 	emacs29nox@../../editors/emacs29-nox11 \
 	emacs30@../../editors/emacs30 \
@@ -292,6 +298,11 @@ PKG_FAIL_REASON+=		"No valid Emacs version installed found"
 _EMACS_PKGDIR=	${_EMACS_PKGDIR_MAP:M${_EMACS_TYPE}@*:C|${_EMACS_TYPE}@||}
 
 .include "${_EMACS_PKGDIR}/version.mk"
+
+# Native OpenVMS Emacs 22 follows its historical LIB/EMACS layout.
+.if ${OPSYS} == "OpenVMS" && !empty(_EMACS_TYPE:Memacs22*)
+_EMACS_LISPDIR.emacs=		lib/emacs/site-lisp
+.endif
 
 #
 # Dependencies and conflicts
@@ -357,9 +368,14 @@ PRINT_PLIST_AWK+=	{ gsub(/${EMACS_LISPPREFIX:S|${PREFIX}/||:S|/|\\/|g}/, \
 #
 
 .if defined(EMACS_BUILDLINK)
+.if ${OPSYS} == "OpenVMS" && !empty(_EMACS_TYPE:Memacs22*)
+_EMACS_DIR=	${BUILDLINK_DIR}/lib/emacs
+ALL_ENV+=	EMACSLOADPATH=${_EMACS_DIR}/${_EMACS_VERSION_MAJOR}_${_EMACS_VERSION_MINOR}/lisp:${_EMACS_DIR}/site-lisp
+.else
 _EMACS_DIR=	${BUILDLINK_DIR}/share/emacs
 # A development version usually claims three digits, say, 27.0.50 etc.
 ALL_ENV+=	EMACSLOADPATH=${_EMACS_DIR}/${_EMACS_VERSION_MAJOR}.${_EMACS_VERSION_MINOR}/lisp:${_EMACS_DIR}/site-lisp
+.endif
 .include	"${_EMACS_PKGDIR}/buildlink3.mk"
 .endif
 

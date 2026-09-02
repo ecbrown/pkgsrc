@@ -1,0 +1,178 @@
+# $NetBSD$
+
+case "${STAGE}" in
+DEINSTALL)
+	# These files are generated from immutable package-owned sidecars.  Remove
+	# their recorded exact versions while the packaged helper is still present.
+	# The standard DEINSTALL fragment follows this one.
+	: "${PKG_PREFIX:=${PREFIX}}"
+	: "${PKG_DESTDIR:=}"
+	emacs22_info_removed=no
+	emacs22_dump_removed=no
+	emacs22_startup_removed=no
+	emacs22_restore_exact()
+	{
+		emacs22_restore_format=$1
+		emacs22_restore_source=$2
+		emacs22_restore_target=$3
+		emacs22_restore_kind=$4
+		emacs22_restore_result=$(
+			"${emacs22_path_helper}" --copy-excl \
+				"${emacs22_restore_format}" \
+				"${emacs22_restore_source}" \
+				"${emacs22_restore_target}"
+		) || return $?
+		if [ "${emacs22_restore_result}" != "${emacs22_restore_target}" ]; then
+			if emacs22_validate_exact "${emacs22_restore_result}"; then
+				"${emacs22_path_helper}" --delete-exact \
+					"${emacs22_restore_result}" >/dev/null 2>&1 || :
+			fi
+			return 1
+		fi
+		case "${emacs22_restore_kind}" in
+		dump)
+			"${emacs22_path_helper}" --set-dump-attrs \
+				"${emacs22_restore_result}" || {
+				"${emacs22_path_helper}" --delete-exact \
+					"${emacs22_restore_result}" >/dev/null 2>&1 || :
+				return 1
+			}
+			;;
+		startup)
+			"${emacs22_path_helper}" --replace-startup-marker \
+				"${emacs22_restore_result}" \
+				"${emacs22_runtime_vms_root}" || {
+				"${emacs22_path_helper}" --delete-exact \
+					"${emacs22_restore_result}" >/dev/null 2>&1 || :
+				return 1
+			}
+			;;
+		*)
+			"${emacs22_path_helper}" --delete-exact \
+				"${emacs22_restore_result}" >/dev/null 2>&1 || :
+			return 1
+			;;
+		esac
+		return 0
+	}
+	emacs22_deinstall_rollback()
+	{
+		emacs22_status=$?
+		trap '' 1 2 15
+		trap - 0
+		if [ "${emacs22_status}" -ne 0 ]; then
+			if [ "${emacs22_dump_removed}" = yes ] &&
+			   ! emacs22_restore_exact udf "${emacs22_dump_raw}" \
+				"${emacs22_dump_exact}" dump; then
+				printf '%s\n' \
+					'emacs22: failed to restore the generated dump' >&2
+			fi
+			if [ "${emacs22_startup_removed}" = yes ] &&
+			   ! emacs22_restore_exact stmlf "${emacs22_startup_raw}" \
+				"${emacs22_startup_exact}" startup; then
+				printf '%s\n' \
+					'emacs22: failed to restore the generated startup file' >&2
+			fi
+			if [ "${emacs22_info_removed}" = yes ]; then
+				./+INFO_FILES ADD "${PKG_METADATA_DIR}" \
+					>/dev/null 2>&1 || :
+			fi
+		fi
+		exit "${emacs22_status}"
+	}
+	trap 'exit 129' 1
+	trap 'exit 130' 2
+	trap 'exit 143' 15
+	trap emacs22_deinstall_rollback 0
+
+	# Remove the Info index entry before deleting the files needed to undo
+	# that operation.  The exit trap restores the entry if any later
+	# DEINSTALL step fails.  The standard fragment follows this one,
+	# so tell it not to repeat the successful removal.
+	if [ -x ./+INFO_FILES ]; then
+		# REMOVE can fail after processing an earlier Info file.  Mark the
+		# operation for rollback before it starts so ADD repairs partial work.
+		emacs22_info_removed=yes
+		./+INFO_FILES REMOVE "${PKG_METADATA_DIR}" || exit $?
+		PKGSRC_INFO_FILES_DONE=yes
+	fi
+
+	emacs22_posix_prefix="${PKG_DESTDIR}${PKG_PREFIX}"
+	emacs22_path_helper="${emacs22_posix_prefix}/bin/emacs22-vms-path.exe"
+	emacs22_metadata="${PKG_METADATA_DIR}/+EMACS22_VMS_FILES"
+	emacs22_validate_exact()
+	{
+		emacs22_name=$1
+		emacs22_base=${emacs22_name%;*}
+		[ "${emacs22_base}" != "${emacs22_name}" ] || return 1
+		emacs22_version=${emacs22_name##*;}
+		case "${emacs22_version}" in
+		''|*[!0-9]*) return 1 ;;
+		esac
+		case "${emacs22_version}" in
+		*[!0]*) ;;
+		*) return 1 ;;
+		esac
+		case "${emacs22_name}" in
+		*\"*) return 1 ;;
+		esac
+		return 0
+	}
+
+	if [ -f "${emacs22_metadata}" ]; then
+		emacs22_format=
+		emacs22_dump_exact=
+		emacs22_startup_exact=
+		while IFS= read -r emacs22_record
+		do
+			case "${emacs22_record}" in
+			FORMAT=1)
+				[ -z "${emacs22_format}" ] || exit 1
+				emacs22_format=1
+				;;
+			DUMP=*)
+				[ -z "${emacs22_dump_exact}" ] || exit 1
+				emacs22_dump_exact=${emacs22_record#DUMP=}
+				;;
+			STARTUP=*)
+				[ -z "${emacs22_startup_exact}" ] || exit 1
+				emacs22_startup_exact=${emacs22_record#STARTUP=}
+				;;
+			*)
+				exit 1
+				;;
+			esac
+		done < "${emacs22_metadata}"
+		[ "${emacs22_format}" = 1 ] || exit 1
+		emacs22_validate_exact "${emacs22_dump_exact}" || exit 1
+		emacs22_validate_exact "${emacs22_startup_exact}" || exit 1
+		[ -x "${emacs22_path_helper}" ] || exit 1
+		emacs22_dump_raw="${emacs22_posix_prefix}/bin/emacs-22_3.dump-pkgsrc"
+		emacs22_startup_raw="${emacs22_posix_prefix}/startup/EMACS-22_3_STARTUP.COM-PKGSRC"
+		[ -f "${emacs22_dump_raw}" ] || exit 1
+		[ -f "${emacs22_startup_raw}" ] || exit 1
+		emacs22_runtime_vms_prefix=$("${emacs22_path_helper}" \
+			--physical-prefix) || exit $?
+		[ -n "${emacs22_runtime_vms_prefix}" ] || exit 1
+		emacs22_runtime_vms_root=${emacs22_runtime_vms_prefix%]}
+		emacs22_dump_removed=yes
+		"${emacs22_path_helper}" --delete-exact \
+			"${emacs22_dump_exact}" || exit $?
+		emacs22_startup_removed=yes
+		"${emacs22_path_helper}" --delete-exact \
+			"${emacs22_startup_exact}" || exit $?
+	elif [ -f "${emacs22_posix_prefix}/bin/emacs-22_3.dump-pkgsrc" ] ||
+	     [ -f "${emacs22_posix_prefix}/startup/EMACS-22_3_STARTUP.COM-PKGSRC" ]; then
+		# Current packages always carry the immutable sidecars and record the
+		# exact generated versions.  Missing metadata must fail closed: a
+		# versionless remove could select a newer file that this package did
+		# not create.
+		exit 1
+	else
+		# A current package always records both exact generated versions.
+		# Without that ownership proof, fail closed rather than remove a
+		# versionless name that may belong to a newer installation.
+		exit 1
+	fi
+	;;
+esac

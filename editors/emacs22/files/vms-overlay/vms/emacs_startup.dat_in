@@ -10,10 +10,9 @@ EMACS-@version@ Emacs version @version@
  SL\bindir\@bindir@
  SL\vmslibdir\@vmslibdir@
  SL\mandir\@mandir@
- SG\runemacs\$'bindir'emacs-@version_us@ -map 'bindir'emacs-@version_us@.dump
+ SG\runemacs\$'bindir'emacs-@version_us@ "-map" 'bindir'emacs-@version_us@.dump
  SG\emacs\@'vmslibdir'kepteditor emacs
  SG\etags\$'bindir'etags
  SG\b2m\$'bindir'b2m
- H\'mandir'gnu
  I\'bindir'emacs-@version_us@.exe\/open/share/header
  I\'bindir'emacs-@version_us@.exe\/open/share/header/priv=sysgbl

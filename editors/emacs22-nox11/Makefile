@@ -1,7 +1,7 @@
 # $NetBSD: Makefile,v 1.10 2016/12/30 22:25:46 wiz Exp $
 
 PKGNAME=	${DISTNAME:S/emacs/emacs22/:S/-/-nox11-/}
-PKGREVISION=	4
+PKGREVISION=	10
 
 CONFLICTS+=	emacs22-[0-9]*
 
@@ -17,4 +17,12 @@ SETGIDGAME=		yes
 EMACS22_WITH_X=	NO
 
 .include "../../editors/emacs22/Makefile.common"
+
+# The native VMS install has no setgid score files.  The historical no-X
+# setting above must not pull games-user/group tasks into the binary package.
+.if ${OPSYS} == "OpenVMS"
+SETGIDGAME=	no
+USE_GAMESGROUP=	no
+.endif
+
 .include "../../mk/bsd.pkg.mk"

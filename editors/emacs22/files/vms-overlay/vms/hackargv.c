@@ -213,6 +213,19 @@ append_argument (destination, source, length)
   (*destination)[old_length + length] = '\0';
 }
 
+static void
+reopen_or_exit (filename, mode, stream)
+     const char *filename;
+     const char *mode;
+     FILE *stream;
+{
+  if (freopen (filename, mode, stream) == NULL)
+    {
+      perror (filename);
+      exit (SS$_ABORT | STS$M_INHIB_MSG);
+    }
+}
+
 enum redirection_t
 { /* Type of redirection to be done */
   NONE   = 0x000,
@@ -231,7 +244,7 @@ int hackargv (int *pargc, char ***pargv, ...)
   char **av;
   /* Filenames and flags associated with I/O redirection */
   char *infile, *outfile, *errfile;
-  int inflags, outflags, errflags;
+  int outflags, errflags;
   enum redirection_t redirection;
   /* Command line passed to popen() or background() */
   char *cmdline;
@@ -245,7 +258,7 @@ int hackargv (int *pargc, char ***pargv, ...)
   char *temp;
   struct stat stbuf;
 
-  inflags = outflags = errflags = 0;
+  outflags = errflags = 0;
   infile  = outfile  = errfile  = NULL;
 
   /* Allocate space; adjust size later */
@@ -258,9 +271,8 @@ int hackargv (int *pargc, char ***pargv, ...)
   /* Check to see if stdin is comming from a pipe.
    * If so, reopen in binary mode.
    */
-  fstat (0, &stbuf);
-  if (strncmp(stbuf.st_dev,"_MB",3) == 0)
-    freopen (stbuf.st_dev, "rb", stdin);
+  if (fstat (0, &stbuf) == 0 && strncmp(stbuf.st_dev,"_MB",3) == 0)
+    reopen_or_exit (stbuf.st_dev, "rb", stdin);
   
   /* If background processing was requested, do it immediately.
    * This is equivalent to matching the regexp "\(.*\)\([|>]?\)&\(.*\)"
@@ -345,9 +357,13 @@ int hackargv (int *pargc, char ***pargv, ...)
 	  errno  = 0;
 	  stdpipe = popen (cmdline, "w");
 	  if (!stdpipe) {
+	    int saved_errno = errno;
+	    free (cmdline);
+	    errno = saved_errno;
 	    perror ("hackargv, popen failed");
 	    abort ();
 	  }
+	  free (cmdline);
 	  /*
 	   * Redefine SYS$ERROR and SYS$OUTPUT.
 	   * Priorities are:
@@ -365,7 +381,8 @@ int hackargv (int *pargc, char ***pargv, ...)
 	   * definitions at image rundown.
 	   */
 	  if (outfile) {
-	    freopen (outfile, "w", stdout);
+	    reopen_or_exit (outfile,
+			    (outflags & CONCAT) ? "a" : "w", stdout);
 #ifdef ENABLE_HACKARGV_REMOVE_EMPTY
 	    chkfile (stdout);
 #endif
@@ -373,7 +390,11 @@ int hackargv (int *pargc, char ***pargv, ...)
 	  else
 	    stdout = stdpipe;
 	  if (errfile) {
-	    freopen (errfile, "w", stderr);
+	    if (errfile == outfile)
+	      stderr = stdout;
+	    else
+	      reopen_or_exit (errfile,
+			      (errflags & CONCAT) ? "a" : "w", stderr);
 #ifdef ENABLE_HACKARGV_REMOVE_EMPTY
 	    if (errfile != outfile)
 	      chkfile (stderr);
@@ -382,7 +403,7 @@ int hackargv (int *pargc, char ***pargv, ...)
 	  else if (redirection == STDERR)
 	    stderr = stdpipe;
 	  if (infile)
-	    freopen (infile, "r", stdin);
+	    reopen_or_exit (infile, "r", stdin);
 	  /* done --- set the new argc, argv and return */
 	  av[ac] = NULL;
 	  if (sz > ac)
@@ -417,7 +438,10 @@ int hackargv (int *pargc, char ***pargv, ...)
 	   * catenation can also create a file.
 	   */
 	  if (strncmp(">>&!+",(*pargv)[i],j=5) == 0) {
-	    if (errfile) {	/* error */ }
+	    if (errfile) {
+	      fprintf (stderr, "stderr already redirected to %s\n", errfile);
+	      abort ();
+	    }
 	    redirection = STDERR | CONCAT | VMSFMT | OVRWRT;
 	    if (!outfile)
 	      redirection |= STDOUT;
@@ -457,13 +481,11 @@ int hackargv (int *pargc, char ***pargv, ...)
 	      redirection |= STDOUT;
 	  }
 	  else if (strncmp(">>+", (*pargv)[i],j=3) == 0) {
-	    if (errfile) {
-	      fprintf (stderr, "stderr already redirected to %s\n", errfile);
+	    if (outfile) {
+	      fprintf (stderr, "stdout already redirected to %s\n", outfile);
 	      abort ();
 	    }
-	    redirection = STDERR | CONCAT | VMSFMT;
-	    if (!outfile)
-	      redirection |= STDOUT;
+	    redirection = STDOUT | CONCAT | VMSFMT;
 	  }
 	  else if (strncmp(">>!", (*pargv)[i],j=3) == 0) {
 	    if (outfile) {
@@ -581,10 +603,12 @@ int hackargv (int *pargc, char ***pargv, ...)
        *   i.e., the string "xvf" may match a file name field.
        * Leading '-' looks like an option, and is illegal for VMS filenames.
       */
-      temp = strdup (av[ac]);
+      temp = (char *) xmalloc ((int) strlen (av[ac]) + 1);
+      strcpy (temp, av[ac]);
       version = strchr (temp, ';') != NULL;
       if ((filelist = glob(temp)) != NULL) {
 	char **x = filelist;
+	free (av[ac]);
 	while (*x) {
 	  char *file_version;
 	  if (sz <= ac)
@@ -638,7 +662,6 @@ int hackargv (int *pargc, char ***pargv, ...)
 	  fclose (test);
 	}
 	infile = av[ac];
-	inflags = redirection;	/* not used */
       }
       redirection = NONE;
       ac--;
@@ -651,6 +674,11 @@ int hackargv (int *pargc, char ***pargv, ...)
     av[ac] = NULL;
   skip_to_next: ; /* Some compilers absolutelly need a statement here.  */
   }
+  if (redirection != NONE)
+    {
+      fprintf (stderr, "Missing filename for redirection\n");
+      exit (SS$_ABORT | STS$M_INHIB_MSG);
+    }
   /* Set the new argv, argc */
   av[ac] = NULL;
   if (sz > ac)
@@ -659,22 +687,26 @@ int hackargv (int *pargc, char ***pargv, ...)
   *pargv = av;
   /* Actually do the redirection */
   if (outfile) {
-    freopen (outfile, "w", stdout);
+    reopen_or_exit (outfile, (outflags & CONCAT) ? "a" : "w", stdout);
 #ifdef ENABLE_HACKARGV_REMOVE_EMPTY
     chkfile (stdout);
 #endif
   }
-  if (errfile) 
-    if (errfile == outfile)
-      stderr = stdout;
-    else {
-      freopen (errfile, "w", stderr);
+  if (errfile)
+    {
+      if (errfile == outfile)
+	stderr = stdout;
+      else
+	{
+	  reopen_or_exit (errfile, (errflags & CONCAT) ? "a" : "w",
+			  stderr);
 #ifdef ENABLE_HACKARGV_REMOVE_EMPTY
-      chkfile (stderr);
+	  chkfile (stderr);
 #endif
+	}
     }
   if (infile)
-    freopen (infile, "r", stdin);
+    reopen_or_exit (infile, "r", stdin);
   return (0);
 }
 

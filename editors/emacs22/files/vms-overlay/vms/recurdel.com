@@ -24,7 +24,7 @@ $ i = i + 1
 $ if e .nes. ","
 $  then
 $   d = f$parse(e,save_def)
-$   ft = f$parse(e,,,"TYPE")
+$   ft = f$edit(f$parse(e,,,"TYPE"),"UPCASE")
 $   sd = f$parse(".DIR","''e'",,,"SYNTAX_ONLY")
 $   sd = f$parse(sd,,,"NAME")+f$parse(sd,,,"TYPE")
 $   d = f$parse(d,,,"NODE")+f$parse(d,,,"DEVICE")+f$parse(d,,,"DIRECTORY")
@@ -33,7 +33,9 @@ $   dc = 0
 $  loop_dirs1:
 $   f = f$search("*.DIR")
 $   flag1 = (ft .eqs. ".*" .or. ft .eqs. ".DIR")
-$   flag2 = (f$parse(f,,,"NAME") .eqs. f$parse(e,,,"NAME") .or. f$parse(e,,,"NAME") .eqs. "*")
+$   f_name = f$edit(f$parse(f,,,"NAME"),"UPCASE")
+$   e_name = f$edit(f$parse(e,,,"NAME"),"UPCASE")
+$   flag2 = (f_name .eqs. e_name .or. e_name .eqs. "*")
 $   if f .nes. ""
 $    then
 $     if flag1 .and. flag2

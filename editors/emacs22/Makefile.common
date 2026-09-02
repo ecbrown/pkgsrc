@@ -24,13 +24,24 @@ CONFLICTS+=	mule-[0-9]*
 # Keep the native DECwindows build self-contained: DECW$ headers and the
 # shareable X library are supplied by the operating system, rather than by
 # pkgsrc's Unix X11 buildlink files.
+USE_TOOLS+=		grep patch readlink
 HAS_CONFIGURE=		yes
 CONFIGURE_SCRIPT=	./configure.com
 MAKE_FILE=		Descrip.MMS
 PATCHDIR=
 # The VMS file-spec parser treats a dot in a directory component specially
 # (the extracted emacs-22.3 directory becomes emacs-22^.3).  Use a dot-free
-# work directory like the existing native EMACS223 build.
+# work directory like the existing native EMACS223 build.  PKGSRCDIR may
+# contain ../ components, and .CURDIR can acquire those components again at
+# recursive phase barriers; GNV then fails to reopen its own work files.  A
+# canonical pkgsrc root keeps the pathname both short and stable, while
+# PKGPATH keeps the X and no-X packages in separate work directories.
+# Recursive barrier makes can inherit a lexical PWD containing ../ even after
+# cd reaches the right directory.  GNV bmake cannot reopen generated files
+# through that spelling, so canonicalize the name itself instead of trusting
+# the shell's logical PWD cache.
+EMACS22_VMS_PKGSRCDIR!=		${TOOLS_PLATFORM.readlink} -f ${PKGSRCDIR:Q}
+WRKDIR=		${EMACS22_VMS_PKGSRCDIR}/${PKGPATH}/work
 WRKSRC=		${WRKDIR}/emacs223
 # GNV cannot reopen the device-qualified .CURDIR spelling emitted by bmake;
 # use the logical pkgsrc root for files consumed by the framework.
@@ -43,23 +54,22 @@ DISTINFO_FILE=		${PKGSRCDIR}/editors/emacs22/files/distinfo-vms
 PKGDIR=		${PKGSRCDIR}/editors/emacs22
 DESCR_SRC=		${PKGDIR}/DESCR
 
-# The VMS port uses system Perl only to translate pkgsrc's POSIX staging path
-# into an OpenVMS directory specification.  VSI VMS kits ship this module in
-# the native Perl installation.
+# The builder uses native Perl to translate pkgsrc's POSIX staging path and to
+# turn that build-time path into a relocation marker.  Binary-package installs
+# use the small packaged C helper instead and do not require Perl.
 EMACS22_VMS_NATIVE_PERL?=	/PERL_ROOT/000000/PERL.EXE
 EMACS22_VMS_PREFIX_CMD=	${EMACS22_VMS_NATIVE_PERL:Q} -MVMS::Filespec -e \
 		'print VMS::Filespec::vmspath("${DESTDIR}${PREFIX}")'
 EMACS22_VMS_PREFIX=	${EMACS22_VMS_PREFIX_CMD:sh}
-EMACS22_VMS_STARTUP_CMD=	${EMACS22_VMS_NATIVE_PERL:Q} -MVMS::Filespec -e \
-		'print VMS::Filespec::vmspath("${DESTDIR}${PREFIX}/startup")'
-EMACS22_VMS_STARTUP=	${EMACS22_VMS_STARTUP_CMD:sh}
-EMACS22_VMS_VUE_CMD=	${EMACS22_VMS_NATIVE_PERL:Q} -MVMS::Filespec -e \
-		'print VMS::Filespec::vmspath("${DESTDIR}${PREFIX}/vue")'
-EMACS22_VMS_VUE=	${EMACS22_VMS_VUE_CMD:sh}
+EMACS22_VMS_STAGE_DUMP=	${EMACS22_VMS_PREFIX:C/\]$/.BIN]EMACS-22_3.DUMP/}
+EMACS22_VMS_STAGE_DUMP_RAW=	${EMACS22_VMS_PREFIX:C/\]$/.BIN]EMACS-22_3.DUMP-PKGSRC/}
+EMACS22_VMS_STAGE_STARTUP=	${EMACS22_VMS_PREFIX:C/\]$/.STARTUP]/}
+EMACS22_VMS_STAGE_STARTUP_FILE=	${EMACS22_VMS_STAGE_STARTUP}EMACS-22_3_STARTUP.COM
+EMACS22_VMS_STAGE_STARTUP_RAW=	${EMACS22_VMS_STAGE_STARTUP}EMACS-22_3_STARTUP.COM-PKGSRC
 
 EMACS22_WITH_X?=	YES
 .if ${EMACS22_WITH_X} == "YES"
-EMACS22_VMS_X_ARGS=	--WITH-X=YES --WITH-X-TOOLKIT=NO
+EMACS22_VMS_X_ARGS=	--WITH-X=YES --WITH-X-TOOLKIT=MOTIF
 .else
 EMACS22_VMS_X_ARGS=	--WITH-X=NO --WITH-X-TOOLKIT=NO
 .endif
@@ -67,10 +77,31 @@ EMACS22_VMS_X_ARGS=	--WITH-X=NO --WITH-X-TOOLKIT=NO
 # The VMS install target enumerates the architecture-independent lisp and
 # documentation files itself.  Generate the final list from the staged tree.
 PLIST_TYPE=		dynamic
-# The VMS pkg_install bootstrap does not ship a vulnerability database.  Keep
-# this package's recursive phase barriers from treating that optional database
-# as a hard failure; checksums remain enabled below.
-NO_PKGTOOLS_REQD_CHECK=	yes
+# Native VMS installation spells the info directory and its shared index in
+# uppercase.  Treat the individual pages as INFO_FILES, but never package the
+# shared INFO/DIR index; pkg_add must update the existing index in place.
+INFO_FILES=		yes
+PKGINFODIR=		INFO
+# The generated +INSTALL/+DEINSTALL scripts update the shared Info index at
+# package operation time, so this is a runtime dependency, not just a tool.
+USE_TOOLS+=		install-info:run
+DEPENDS+=		pkg_install-info>=4.5nb4:../../pkgtools/pkg_install-info
+INSTALL_INFO=		${PREFIX}/bin/pkg_install-info
+# pkg_install's portable archive format does not carry OpenVMS RMS record
+# metadata.  Keep immutable raw/template sidecars in the package and let the
+# install script materialize the runnable files at the target's PKG_PREFIX.
+# This preserves package checksums and supports binary-package relocation.
+INSTALL_TEMPLATES+=	${FILESDIR}/vms-install
+DEINSTALL_TEMPLATES+=	${FILESDIR}/vms-deinstall
+# The executable has this path compiled in, so retain it independently of
+# PKG_CONFIG and match the protection applied by the native MMS install.
+REQD_DIRS_PERMS+=	${PREFIX}/lib/emacs/lock \
+			${REAL_ROOT_USER} ${REAL_ROOT_GROUP} 0777
+# site-lisp is an administrator extension point.  Reference-count the shared
+# directory, preserve nonempty user content, and do not inherit a private
+# builder umask.
+MAKE_DIRS_PERMS+=	${PREFIX}/lib/emacs/site-lisp \
+			${REAL_ROOT_USER} ${REAL_ROOT_GROUP} 0755
 
 post-extract:
 	${MKDIR} ${WRKSRC}
@@ -78,19 +109,91 @@ post-extract:
 	${RM} -rf ${WRKDIR}/${DISTNAME}
 	${CP} -R ${FILESDIR}/vms-overlay/. ${WRKSRC}
 	${CP} ${FILESDIR}/site-init.el ${WRKSRC}/lisp/site-init.el
+	# OpenVMS patch(1) cannot rename its SYS$SCRATCH output across volumes.
+	# Give it an explicit output beside the target, then install that file.
+	${TOOLS_PLATFORM.patch} -d ${WRKSRC} -p0 \
+		-o ${WRKSRC}/lisp/files.el.pkgsrc \
+		< ${FILESDIR}/vms-patches/patch-lisp_files.el
+	${MV} ${WRKSRC}/lisp/files.el.pkgsrc ${WRKSRC}/lisp/files.el
+	${TOOLS_PLATFORM.patch} -d ${WRKSRC} -p0 \
+		-o ${WRKSRC}/lisp/loadup.el.pkgsrc \
+		< ${FILESDIR}/vms-patches/patch-lisp_loadup.el
+	${MV} ${WRKSRC}/lisp/loadup.el.pkgsrc ${WRKSRC}/lisp/loadup.el
+	${TOOLS_PLATFORM.patch} -d ${WRKSRC} -p0 \
+		-o ${WRKSRC}/src/regex.c.pkgsrc \
+		< ${FILESDIR}/vms-patches/patch-src_regex.c
+	${MV} ${WRKSRC}/src/regex.c.pkgsrc ${WRKSRC}/src/regex.c
+	${TOOLS_PLATFORM.patch} -d ${WRKSRC} -p0 \
+		-o ${WRKSRC}/oldXMenu/Internal.c.pkgsrc \
+		< ${FILESDIR}/vms-patches/patch-oldXMenu_Internal.c
+	${MV} ${WRKSRC}/oldXMenu/Internal.c.pkgsrc ${WRKSRC}/oldXMenu/Internal.c
+	# The distfile includes bytecode for patched VMS Lisp.  Let loadup preload
+	# the corrected sources into the VMS dump instead.
+	${RM} ${WRKSRC}/lisp/files.elc
+	${RM} ${WRKSRC}/lisp/startup.elc
+	${RM} ${WRKSRC}/lisp/vms-patch.elc
+	${RM} ${WRKSRC}/lisp/vmsproc.elc
 	${CHMOD} -R go-w ${WRKSRC}
 
 do-configure:
-	${RUN} cd ${WRKSRC} && { configure_status=0; \
-	/bin/dcl '@[.VMS]pkgsrc-configure.com ${EMACS22_VMS_PREFIX} \
-		${EMACS22_WITH_X}' || configure_status=$$?; \
-	test $$configure_status -eq 0 || test $$configure_status -eq 1; }
+	# GNV dcl's default output mode lets a spawned DCL/MMS process inherit
+	# bmake's pipe directly.  Under a piped build the wrapper can then return
+	# SS$_BADATTRIB before its child, leaving MMS compiling after bmake stops.
+	# The supported -s mailbox mode waits for the child, keeps its output in
+	# bmake's stream, and propagates the native completion status.
+	${RUN} cd ${WRKSRC} && /bin/dcl -s \
+		'@[.VMS]pkgsrc-configure.com ${EMACS22_VMS_PREFIX} ${EMACS22_WITH_X}'
+
+pre-configure:
+	${TEST} -x ${EMACS22_VMS_NATIVE_PERL:Q}
+	${EMACS22_VMS_NATIVE_PERL:Q} -MVMS::Filespec -e \
+		'use VMS::Filespec ();' && :
 
 do-build:
-	${RUN} cd ${WRKSRC} && /bin/dcl '@[.VMS]pkgsrc-mms.com all ${EMACS22_VMS_STARTUP} ${EMACS22_VMS_VUE}'
+	${RUN} cd ${WRKSRC} && /bin/dcl -s \
+		'@[.VMS]pkgsrc-mms.com all ${EMACS22_VMS_PREFIX}'
 
 do-install:
-	${RUN} cd ${WRKSRC} && /bin/dcl '@[.VMS]pkgsrc-mms.com install ${EMACS22_VMS_STARTUP} ${EMACS22_VMS_VUE}'
+	${RUN} cd ${WRKSRC} && /bin/dcl -s \
+		'@[.VMS]pkgsrc-mms.com install_no_database ${EMACS22_VMS_PREFIX}'
+
+post-install:
+	${INSTALL_DATA} ${FILESDIR}/vms-site-lisp-subdirs.el \
+		${DESTDIR}${PREFIX}/lib/emacs/site-lisp/subdirs.el
+	# install-info owns the shared index; carrying it in the binary package
+	# prevents pkg_add from installing alongside any existing info package.
+	${RM} -f ${DESTDIR}${PREFIX}/${PKGINFODIR}/DIR
+	# Configure must use the staged prefix so MMS installs under DESTDIR.  Turn
+	# its absolute prefix into a marker; +INSTALL expands the marker using the
+	# target's PKG_PREFIX without modifying any package-owned file.
+	${PKGSRC_SETENV} \
+		EMACS22_STAGE_PREFIX=${EMACS22_VMS_PREFIX:Q} \
+		${EMACS22_VMS_NATIVE_PERL:Q} -pi -e \
+		'BEGIN { ($$from = $$ENV{EMACS22_STAGE_PREFIX}) =~ s/^[^:]*://; $$from =~ s/\]$$//; die "empty VMS stage prefix" if $$from eq ""; $$n = 0; } $$n += s/[-A-Za-z0-9_\x24^]+:\Q$$from\E/__PKGSRC_EMACS22_PREFIX__/ig; $$n += s/EMACS22_STAGE:\[000000/__PKGSRC_EMACS22_PREFIX__/ig; die "unreplaced VMS stage prefix" if index(uc($$_), uc($$from)) >= 0; END { die "startup prefix was not replaced" unless $$n; }' \
+		${EMACS22_VMS_STAGE_STARTUP_FILE}
+	${GREP} -q __PKGSRC_EMACS22_PREFIX__ \
+		${DESTDIR}${PREFIX}/startup/EMACS-22_3_STARTUP.COM
+	# EMACS22_STAGE remains intentionally as the runtime logical name; only
+	# its build-time equivalence must be replaced above.
+	! ${GREP} -Eiq '[.]DESTDIR' \
+		${DESTDIR}${PREFIX}/startup/EMACS-22_3_STARTUP.COM
+	${RUN} cd ${WRKSRC} && /bin/dcl -s \
+		'@[.VMS]pkgsrc-stage-sidecar.com ${EMACS22_VMS_STAGE_STARTUP_FILE} ${EMACS22_VMS_STAGE_STARTUP_RAW}'
+	${TEST} ! -e ${DESTDIR}${PREFIX}/startup/EMACS-22_3_STARTUP.COM
+	${TEST} -f ${DESTDIR}${PREFIX}/startup/EMACS-22_3_STARTUP.COM-PKGSRC
+	# Expose the dump's physical record-control words to pkg_create and retain
+	# them in a checksum-stable sidecar.  +INSTALL copies this sidecar before
+	# restoring VAR/NONE on the generated runtime dump.
+	${RUN} cd ${WRKSRC} && /bin/dcl -s \
+		'@[.VMS]pkgsrc-stage-sidecar.com ${EMACS22_VMS_STAGE_DUMP} ${EMACS22_VMS_STAGE_DUMP_RAW}'
+	${TEST} ! -e ${DESTDIR}${PREFIX}/bin/emacs-22_3.dump
+	${TEST} -f ${DESTDIR}${PREFIX}/bin/emacs-22_3.dump-pkgsrc
+	${RUN} cd ${WRKSRC} && /bin/dcl -s \
+		'@[.VMS]pkgsrc-set-file-attrs.com ${EMACS22_VMS_STAGE_DUMP_RAW}'
+	# Provide the canonical GNV entry point expected by editors/emacs/modules.mk
+	# and by dependent Lisp packages.
+	${INSTALL_SCRIPT} ${FILESDIR}/vms-emacs \
+		${DESTDIR}${PREFIX}/bin/emacs
 .else
 USE_TOOLS+=		gmake gzip mktemp:run perl:run pkg-config
 GNU_CONFIGURE=		yes

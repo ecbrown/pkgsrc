@@ -35,6 +35,11 @@ $!
 $! The generated file will have a specific format, to make it possible to
 $! tuck in into a larger command file.
 $!
+$ tmp_status = 1
+$ keep := no
+$ line_i = 0
+$ line0 = ""
+$ gnu_extra_file :=
 $ open/read/error=noinfile gnu_data_file 'p1'
 $ open/write/error=nooutfile gnu_startup_file 'p2'
 $ on control_y then goto bugout
@@ -52,7 +57,7 @@ $ line_i = 0
 $ line0 = ""
 $loop_file2:
 $ line'line_i' = ""
-$ read/end=nomore/error=nomore gnu_data_file line'line_i'
+$ read/end=nomore/error=bugout gnu_data_file line'line_i'
 $ if f$edit(line'line_i',"TRIM") .eqs. "" then goto loop_file2
 $ if f$extract(0,1,line'line_i') .eqs. "!"
 $  then
@@ -370,6 +375,7 @@ $  endif
 $ goto loop_file
 $bugout:
 $ tmp_status=$status
+$ set noon
 $ if "''gnu_extra_file'" .nes. ""
 $  then
 $   close 'gnu_extra_file
@@ -377,7 +383,7 @@ $  endif
 $ line0 = ""
 $ keep := no
 $nomore:
-$ if line_i .ne. 0 .or. line0 .nes. "" then goto resume_loop_file
+$ if keep .and. (line_i .ne. 0 .or. line0 .nes. "") then goto resume_loop_file
 $ if keep then write/error=bugout gnu_startup_file "$",hacked_utility,"_bugout:"
 $ if keep then write/error=bugout gnu_startup_file "$ a = f$verify(__debug_save_verify)"
 $ if keep then write/error=bugout gnu_startup_file "$!GNU NODE END"
@@ -385,7 +391,9 @@ $ if keep then write/error=bugout gnu_startup_file "$exit: EXIT"
 $ close gnu_startup_file
 $ if .not. keep then delete 'f$parse(p2,"*.*;*")'
 $nooutfile:
+$ if tmp_status .eq. 1 .and. .not. keep then tmp_status = $status
 $ close gnu_data_file
 $noinfile:
+$ if tmp_status .eq. 1 .and. .not. keep then tmp_status = $status
 $exit:
-$ exit 1 + 0*f$verify(__debug_save_verify)
+$ exit tmp_status + 0*f$verify(__debug_save_verify)

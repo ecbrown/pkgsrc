@@ -90,6 +90,8 @@ Boston, MA 02110-1301, USA.  */
 #ifdef VMS
 /* The VMS build supplies oldXMenu through its include search list.  */
 #include "XMenu.h"
+/* Emacs 22's oldXMenu header omitted this interface.  */
+extern void XMenuSetAEQ (XMenu *, int);
 #else
 #include "../oldXMenu/XMenu.h"
 #endif /* not VMS */
