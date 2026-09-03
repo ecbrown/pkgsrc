@@ -1,6 +1,7 @@
 # $NetBSD: Makefile,v 1.124 2026/01/20 10:07:04 wiz Exp $
 
 DISTNAME=	ncurses-6.6
+PKGREVISION=	1
 CATEGORIES=	devel
 MASTER_SITES=	${MASTER_SITE_GNU:=ncurses/}
 
@@ -74,6 +75,9 @@ SUBST_FILES.recursive-libtool=	Makefile include/Makefile ncurses/Makefile
 SUBST_FILES.recursive-libtool+=	progs/Makefile panel/Makefile menu/Makefile
 SUBST_FILES.recursive-libtool+=	form/Makefile misc/Makefile
 SUBST_SED.recursive-libtool=	-e 's|^TOP_MFLAGS[[:space:]]*= |TOP_MFLAGS = LIBTOOL="${WRAPPER_DIR}/bin/libtool" |'
+# Libtool folds ncurses' deliberate duplicate -lncurses arguments into one
+# .la input.  Give GNV the required second archive scan by explicit pathname.
+SUBST_SED.recursive-libtool+=	-e '/^LIBS_TIC[[:space:]]*=/s|$$| ../lib/.libs/libncurses.a|'
 SUBST_SED.recursive-libtool+=	-e 's|( cd \([^ ]*\) && $${MAKE} $${TOP_MFLAGS} $$@ )|$${MAKE} -C \1 $${TOP_MFLAGS} $$@|'
 SUBST_SED.recursive-libtool+=	-e 's|( cd \([^ ]*\) && $$(MAKE)|$$(MAKE) -C \1|'
 SUBST_SED.recursive-libtool+=	-e '/$$(MAKE) -C /s| )$$||'
@@ -101,7 +105,12 @@ USE_LANGUAGES:=		c
 CONFIGURE_ARGS+=	--without-cxx --without-cxx-binding --without-tests
 CONFIGURE_ARGS+=	--disable-ext-colors
 CONFIGURE_ARGS+=	--enable-symlinks
+CONFIGURE_ARGS+=	--disable-stripping
 CONFIGURE_ENV+=		cf_cv_have_tcgetattr=yes
+# The C RTL exports tsearch(), but VSI C does not provide <search.h>.
+CONFIGURE_ENV+=		ac_cv_func_tsearch=no
+# VSI C's link probes accept issetugid(), but no OpenVMS image exports it.
+CONFIGURE_ENV+=		ac_cv_func_issetugid=no
 # Starting a sub-make from another GNV make leaves Bash with descriptors that
 # make a later exec fail with "illegal seek".  Have pkgsrc invoke each ncurses
 # directory directly, preserving the upstream dependency order.
