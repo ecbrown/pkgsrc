@@ -1,8 +1,12 @@
-$NetBSD: patch-ac,v 1.4 2014/05/14 02:28:13 rodent Exp $
+$NetBSD$
 
---- ispell.h.orig	Thu Apr 28 14:46:51 2005
+Use an integer type wide enough to hold serialized string-table sizes and
+avoid readonly, which is a reserved type qualifier in VSI C.  Track whether
+the temporary file belongs to this process so signal cleanup is safe.
+
+--- ispell.h.orig
 +++ ispell.h
-@@ -144,6 +144,16 @@
+@@ -147,6 +147,16 @@
  #include "config.h"
  #include <stdio.h>
  
@@ -19,7 +23,7 @@ $NetBSD: patch-ac,v 1.4 2014/05/14 02:28:13 rodent Exp $
  #ifdef __STDC__
  #define P(x)	x
  #define VOID	void
-@@ -380,8 +390,8 @@ struct hashheader
+@@ -390,8 +400,8 @@
      unsigned short maxstringcharlen;		/* Max strchr len supported */
      unsigned short compoundmin;			/* Min lth of compound parts */
      short compoundbit;				/* Flag 4 compounding roots */
@@ -30,3 +34,21 @@ $NetBSD: patch-ac,v 1.4 2014/05/14 02:28:13 rodent Exp $
      unsigned int tblsize;			/* No. entries in hash tbl */
      unsigned int stblsize;			/* No. entries in sfx tbl */
      unsigned int ptblsize;			/* No. entries in pfx tbl */
+@@ -662,7 +672,7 @@
+ EXTERN char *	askfilename;		/* File specified in -f option */
+ 
+ EXTERN int	changes;		/* NZ if changes made to cur. file */
+-EXTERN int	readonly;		/* NZ if current file is readonly */
++EXTERN int	ispell_readonly;	/* NZ if current file is readonly */
+ EXTERN int	quit;			/* NZ if we're done with this file */
+ 
+ #define MAXPOSSIBLE	100	/* Max no. of possibilities to generate */
+@@ -738,6 +748,8 @@
+ INIT (int correct_verbose_mode, 0);	/* NZ for "verbose" -a mode */
+ 
+ INIT (char tempfile[MAXPATHLEN], "");	/* Name of file we're spelling into */
++INIT (int tempfile_created, 0);	/* NZ if tempfile belongs to this process */
++INIT (int filter_error, 0);	/* NZ if external filtering was incomplete */
+ 
+ INIT (int minword, MINWORD);		/* Longest always-legal word */
+ INIT (int sortit, 1);			/* Sort suggestions alphabetically */

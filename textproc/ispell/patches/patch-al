@@ -1,8 +1,11 @@
 $NetBSD: patch-al,v 1.2 2014/05/14 02:28:13 rodent Exp $
 
---- config.X.orig	Wed May 25 14:13:53 2005
+Use the portable termcap interface by default.  Keep the hunk at its current
+release offset so GNV patch preserves filename case on OpenVMS.
+
+--- config.X.orig
 +++ config.X
-@@ -274,7 +274,7 @@
+@@ -291,7 +291,7 @@
  ** -lcurses, or -lncurses on most systems.
  */
  #ifndef TERMLIB

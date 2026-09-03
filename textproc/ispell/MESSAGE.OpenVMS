@@ -1,0 +1,17 @@
+===========================================================================
+$NetBSD$
+
+Before running the native ispell images, invoke the packaged setup procedure
+directly from the DCL process that will use them:
+
+    $ @device:[pkg-prefix.startup]ISPELL_SETUP.COM
+
+Replace "device:[pkg-prefix]" with the native OpenVMS spelling of ${PREFIX}.
+The procedure defines DECC$STREAM_PIPE and DECC$POPEN_NO_CRLF_REC_ATTR in the
+process logical-name table before image activation.  It also defines the
+global DCL foreign-command symbols ISPELL, DEFMT_C, and DEFMT_SH.
+
+You may invoke the procedure from LOGIN.COM.  Do not run it with SPAWN,
+because process logical names and command symbols do not propagate from a
+subprocess back to its parent.
+===========================================================================

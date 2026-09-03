@@ -45,6 +45,7 @@ $ DEFINE/JOB DECC$UNIX_LEVEL 30
 $ DEFINE/JOB DECC$POSIX_COMPLIANT_PATHNAMES ENABLE
 $ DEFINE/JOB DECC$UNIX_PATH_BEFORE_LOGNAME ENABLE
 $ DEFINE/JOB DECC$STREAM_PIPE ENABLE
+$ DEFINE/JOB DECC$POPEN_NO_CRLF_REC_ATTR ENABLE
 $ SET PROCESS/PARSE_STYLE=EXTENDED
 $ BASH
 ```
@@ -63,6 +64,12 @@ the GNV `dcl` wrapper in it.  This setting must be a job logical before Bash is
 started; exporting a Unix environment variable with the same name does not
 enable the C RTL feature.  pkgsrc checks it before starting a package's
 configure phase and reports a direct error when it is missing.
+
+`DECC$POPEN_NO_CRLF_REC_ATTR` keeps C RTL `popen()` streams byte-preserving
+instead of adding CR/LF record attributes.  Programs whose filters must retain
+the exact input length, including ispell's external deformatters, depend on
+this setting.  Like stream pipes, it must be defined before the program image
+is activated.
 
 Run the bootstrap explicitly with Bash.  Direct shebang execution and GNV
 Bash's POSIX mode are not reliable on this release.
@@ -126,8 +133,11 @@ config and existing package tests.
 The following end-user packages have clean binary packages and runtime tests
 on the reference VSI OpenVMS x86-64 system:
 
-- `ncurses-6.6`: headers, static libraries, utilities, and the terminfo
+- `ncurses-6.6nb1`: headers, static libraries, utilities, and the terminfo
   database; both `tic`/`infocmp` and a linked `getch()` test are validated.
+- `ispell-3.4.06nb3`: native images, the American English dictionary, DCL and
+  GNV protocol modes, external filters, and transactional updates to files and
+  personal dictionaries are validated.
 - `lynx-2.9.2nb8`: curses UI, local-file rendering, and HTTP retrieval are
   validated.  The initial port deliberately disables NLS, TLS, and IPv6.
 - `vim-share-9.2.1025` and `vim-motif-9.2.1025`: runtime files, `xxd`, the
@@ -139,9 +149,24 @@ package:
 
 ```
 bash$ cd devel/ncurses && bmake clean package && bmake install
+bash$ cd ../../textproc/ispell && bmake clean package && bmake install
 bash$ cd ../../www/lynx && bmake clean package && bmake install
 bash$ cd ../../editors/vim-share && bmake clean package && bmake install
 bash$ cd ../vim-motif && bmake clean package && bmake install
+```
+
+Before running ispell, invoke its packaged setup procedure directly from DCL.
+Replace the native and POSIX example prefixes with spellings of the same
+installation.  Any logical name used as the leading component of the POSIX
+prefix must already be defined in this process.
+
+```
+$ @disk:[user.pkg.startup]ISPELL_SETUP.COM
+$ ISPELL -v
+$ PIPE WRITE SYS$OUTPUT "mispeling" | ISPELL -a
+$ BASH
+bash$ /path/to/pkg/bin/ispell -v
+bash$ printf 'mispeling\n' | /path/to/pkg/bin/ispell -a
 ```
 
 The Vim package installs both `bin/vim` for GNV shells and `bin/vim.exe` for

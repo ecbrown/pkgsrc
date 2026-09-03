@@ -1,7 +1,11 @@
 $NetBSD: patch-ai,v 1.4 2014/05/14 02:28:13 rodent Exp $
---- languages/english/english.3.orig	Thu Apr 28 22:53:07 2005
+
+Correct a misspelling.  Keep the hunks at their current release offsets so
+GNV patch does not enter its case-losing backup path on OpenVMS.
+
+--- languages/english/english.3.orig
 +++ languages/english/english.3
-@@ -5175,6 +5175,7 @@ dirk
+@@ -5044,6 +5044,7 @@
  dirndl
  disaccredit
  disafforest
@@ -9,7 +13,7 @@ $NetBSD: patch-ai,v 1.4 2014/05/14 02:28:13 rodent Exp $
  disbranch
  disbud
  discalced
-@@ -5209,7 +5210,6 @@ dispersity
+@@ -5077,7 +5078,6 @@
  dispersoid
  displayable
  disproven

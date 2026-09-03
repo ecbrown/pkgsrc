@@ -18,3 +18,4 @@ man/man1/ispell.1
 man/man1/munchlist.1
 man/man1/tryaffix.1
 man/man5/ispell.5
+${PLIST.vms}startup/ISPELL_SETUP.COM

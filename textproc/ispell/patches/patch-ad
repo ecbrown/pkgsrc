@@ -1,8 +1,101 @@
 $NetBSD: patch-ad,v 1.4 2014/05/14 02:28:13 rodent Exp $
 
---- buildhash.c.orig	Thu Apr 28 00:26:06 2005
+Use pointer-width string-table accounting.  On OpenVMS, resolve paths to
+exact file versions and explicitly flush both the hash and statistics output
+so delayed RMS write failures cannot produce a successful truncated build.
+
+--- buildhash.c.orig
 +++ buildhash.c
-@@ -248,7 +248,7 @@ static void output ()
+@@ -125,7 +125,7 @@
+ #include <sys/stat.h>
+ 
+ int		main P ((int argc, char * argv[]));
+-static void	output P ((void));
++static int	output P ((void));
+ static void	filltable P ((void));
+ VOID *		mymalloc P ((unsigned int size));
+ VOID *		myrealloc P ((VOID * ptr, unsigned int size,
+@@ -151,6 +151,10 @@
+     {
+     int		avg;
+     char *	lastdot;
++    char *	lastsep;
++#if defined(MSDOS) || defined(__VMS)
++    char *	sep;
++#endif
+     FILE *	statf;
+     int		stats[NSTAT];
+     unsigned int i;
+@@ -185,10 +189,41 @@
+     if (yyparse ())			/* Parse the language tables */
+ 	exit (1);
+ 
++    if (strlen (Dfile) >= sizeof Sfile)
++	{
++	(void) fprintf (stderr, BHASH_C_PATH_TOO_LONG, Dfile,
++	  MAYBE_CR (stderr));
++	return 1;
++    	}
+     strcpy (Sfile, Dfile);
++#ifdef __VMS
++    /* A VMS version field belongs after the suffix, so omit it here. */
++    sep = vms_version_field (Sfile);
++    if (sep != NULL)
++	*sep = '\0';
++#endif
+     lastdot = rindex (Sfile, '.');
+-    if (lastdot != NULL)
++    lastsep = rindex (Sfile, '/');
++#ifdef MSDOS
++    sep = rindex (Sfile, '\\');
++    if (lastsep == NULL  ||  (sep != NULL  &&  sep > lastsep))
++	lastsep = sep;
++    sep = rindex (Sfile, ':');
++    if (lastsep == NULL  ||  (sep != NULL  &&  sep > lastsep))
++	lastsep = sep;
++#endif
++#ifdef __VMS
++    lastdot = vms_find_last_unescaped (Sfile, ".");
++    lastsep = vms_path_separator (Sfile);
++#endif
++    if (lastdot != NULL  &&  (lastsep == NULL  ||  lastdot > lastsep))
+ 	*lastdot = '\0';
++    if (strlen (Sfile) + strlen (STATSUFFIX) >= sizeof Sfile)
++	{
++	(void) fprintf (stderr, BHASH_C_PATH_TOO_LONG, Dfile,
++	  MAYBE_CR (stderr));
++	return 1;
++	}
+     strcat (Sfile, STATSUFFIX);
+ #ifdef MSDOS
+     /*
+@@ -248,33 +283,47 @@
+ 	    (void) fprintf (statf, "%d:\t%d\t%d\t%f\n", i + 1, stats[i], j,
+ 	      (double) avg / j);
+ 	}
+-    (void) fclose (statf);
++    j = ferror (statf);
++    if (fflush (statf) != 0)
++	j = 1;
++    if (fclose (statf) != 0)
++	j = 1;
++    if (j)
++	{
++	(void) fprintf (stderr, BHASH_C_WRITE_FAILED, Sfile,
++	  MAYBE_CR (stderr));
++	(void) unlink (Sfile);
++	return 1;
++	}
+ 
+     filltable ();
+-    output ();
++    if (output () != 0)
++	return 1;
+     return 0;
+     }
+ 
+-static void output ()
++static int output ()
      {
      register FILE *		houtfile;
      register struct dent *	dp;
@@ -11,7 +104,117 @@ $NetBSD: patch-ad,v 1.4 2014/05/14 02:28:13 rodent Exp $
      int				n;
      unsigned int		i;
      int				maxplen;
-@@ -375,7 +375,7 @@ static void output ()
+     int				maxslen;
+     struct flagent *		fentry;
++    int				write_error = 0;
+ 
+     if ((houtfile = fopen (Hfile, "wb")) == NULL)
+ 	{
+ 	(void) fprintf (stderr, CANT_CREATE, Hfile, MAYBE_CR (stderr));
+-	return;
++	return -1;
+ 	}
+     hashheader.stringsize = 0;
+     hashheader.lstringsize = 0;
+     hashheader.tblsize = hashsize;
+-    (void) fwrite ((char *) &hashheader, sizeof hashheader, 1, houtfile);
++    if (fwrite ((char *) &hashheader, sizeof hashheader, 1, houtfile) != 1)
++	write_error = 1;
+     strptr = 0;
+     /*
+     ** Put out the strings from the flags table.  This code assumes that
+@@ -289,15 +338,17 @@
+ 	{
+ 	if (fentry->stripl)
+ 	    {
+-	    (void) fwrite ((char *) fentry->strip, fentry->stripl + 1,
+-	      sizeof (ichar_t), houtfile);
++	    if (fwrite ((char *) fentry->strip, fentry->stripl + 1,
++	      sizeof (ichar_t), houtfile) != sizeof (ichar_t))
++		write_error = 1;
+ 	    fentry->strip = (ichar_t *) strptr;
+ 	    strptr += (fentry->stripl + 1) * sizeof (ichar_t);
+ 	    }
+ 	if (fentry->affl)
+ 	    {
+-	    (void) fwrite ((char *) fentry->affix, fentry->affl + 1,
+-	      sizeof (ichar_t), houtfile);
++	    if (fwrite ((char *) fentry->affix, fentry->affl + 1,
++	      sizeof (ichar_t), houtfile) != sizeof (ichar_t))
++		write_error = 1;
+ 	    fentry->affix = (ichar_t *) strptr;
+ 	    strptr += (fentry->affl + 1) * sizeof (ichar_t);
+ 	    }
+@@ -312,15 +363,17 @@
+ 	{
+ 	if (fentry->stripl)
+ 	    {
+-	    (void) fwrite ((char *) fentry->strip, fentry->stripl + 1,
+-	      sizeof (ichar_t), houtfile);
++	    if (fwrite ((char *) fentry->strip, fentry->stripl + 1,
++	      sizeof (ichar_t), houtfile) != sizeof (ichar_t))
++		write_error = 1;
+ 	    fentry->strip = (ichar_t *) strptr;
+ 	    strptr += (fentry->stripl + 1) * sizeof (ichar_t);
+ 	    }
+ 	if (fentry->affl)
+ 	    {
+-	    (void) fwrite ((char *) fentry->affix, fentry->affl + 1,
+-	      sizeof (ichar_t), houtfile);
++	    if (fwrite ((char *) fentry->affix, fentry->affl + 1,
++	      sizeof (ichar_t), houtfile) != sizeof (ichar_t))
++		write_error = 1;
+ 	    fentry->affix = (ichar_t *) strptr;
+ 	    strptr += (fentry->affl + 1) * sizeof (ichar_t);
+ 	    }
+@@ -337,19 +390,23 @@
+     for (i = 0;  i < hashheader.nstrchartype;  i++)
+ 	{
+ 	n = strlen ((char *) chartypes[i].name) + 1;
+-	(void) fwrite ((char *) chartypes[i].name, n, 1, houtfile);
++	if (fwrite ((char *) chartypes[i].name, n, 1, houtfile) != 1)
++	    write_error = 1;
+ 	strptr += n;
+ 	n = strlen (chartypes[i].deformatter) + 1;
+-	(void) fwrite (chartypes[i].deformatter, n, 1, houtfile);
++	if (fwrite (chartypes[i].deformatter, n, 1, houtfile) != 1)
++	    write_error = 1;
+ 	strptr += n;
+ 	for (n = 0;
+ 	  chartypes[i].suffixes[n] != '\0';
+ 	  n += strlen (&chartypes[i].suffixes[n]) + 1)
+ 	    ;
+ 	n++;
+-	(void) fwrite (chartypes[i].suffixes, n, 1, houtfile);
++	if (fwrite (chartypes[i].suffixes, n, 1, houtfile) != 1)
++	    write_error = 1;
+ 	strptr += n;
+-	(void) fwrite (&chartypes[i].options, 1, 1, houtfile);
++	if (fwrite (&chartypes[i].options, 1, 1, houtfile) != 1)
++	    write_error = 1;
+ 	strptr++;
+ 	}
+     hashheader.lstringsize = strptr;
+@@ -369,7 +426,8 @@
+ 	else
+ 	    {
+ 	    n = strlen ((char *) dp->word) + 1;
+-	    (void) fwrite (dp->word, n, 1, houtfile);
++	    if (fwrite (dp->word, n, 1, houtfile) != 1)
++		write_error = 1;
+ 	    dp->word = (unsigned char *) strptr;
+ 	    strptr += n;
+ 	    }
+@@ -381,14 +439,15 @@
+ 	n = sizeof (struct dent) - n;
+ 	strptr += n;
+ 	while (--n >= 0)
+-	    (void) putc ('\0', houtfile);
++	    if (putc ('\0', houtfile) == EOF)
++		write_error = 1;
+ 	}
+     /* Put out the hash table itself */
+     for (i = 0, dp = hashtbl;  i < hashsize;  i++, dp++)
  	{
  	if (dp->next != 0)
  	    {
@@ -20,3 +223,109 @@ $NetBSD: patch-ad,v 1.4 2014/05/14 02:28:13 rodent Exp $
  	    x = dp->next - hashtbl;
  	    dp->next = (struct dent *)x;
  	    }
+@@ -397,24 +456,45 @@
+ 	    dp->next = (struct dent *)-1;
+ 	    }
+ #ifdef PIECEMEAL_HASH_WRITES
+-	(void) fwrite ((char *) dp, sizeof (struct dent), 1, houtfile);
++	if (fwrite ((char *) dp, sizeof (struct dent), 1, houtfile) != 1)
++	    write_error = 1;
+ #endif /* PIECEMEAL_HASH_WRITES */
+ 	}
+ #ifndef PIECEMEAL_HASH_WRITES
+-    (void) fwrite ((char *) hashtbl, sizeof (struct dent), hashsize, houtfile);
++    if (fwrite ((char *) hashtbl, sizeof (struct dent), hashsize, houtfile)
++      != hashsize)
++	write_error = 1;
+ #endif /* PIECEMEAL_HASH_WRITES */
+     /* Put out the language tables */
+-    (void) fwrite ((char *) sflaglist,
+-      sizeof (struct flagent), numsflags, houtfile);
++    if (fwrite ((char *) sflaglist,
++      sizeof (struct flagent), numsflags, houtfile) != numsflags)
++	write_error = 1;
+     hashheader.stblsize = numsflags;
+-    (void) fwrite ((char *) pflaglist,
+-      sizeof (struct flagent), numpflags, houtfile);
++    if (fwrite ((char *) pflaglist,
++      sizeof (struct flagent), numpflags, houtfile) != numpflags)
++	write_error = 1;
+     hashheader.ptblsize = numpflags;
+     /* Finish filling in the hash header. */
+     hashheader.stringsize = strptr;
+-    rewind (houtfile);
+-    (void) fwrite ((char *) &hashheader, sizeof hashheader, 1, houtfile);
+-    (void) fclose (houtfile);
++    if (ferror (houtfile))
++	write_error = 1;
++    if (!write_error  &&  fseek (houtfile, 0L, SEEK_SET) != 0)
++	write_error = 1;
++    if (!write_error
++      &&  fwrite ((char *) &hashheader, sizeof hashheader, 1, houtfile) != 1)
++	write_error = 1;
++    if (fflush (houtfile) != 0)
++	write_error = 1;
++    if (fclose (houtfile) != 0)
++	write_error = 1;
++    if (write_error)
++	{
++	(void) fprintf (stderr, BHASH_C_WRITE_FAILED, Hfile,
++	  MAYBE_CR (stderr));
++	(void) unlink (Hfile);
++	return -1;
++	}
++    return 0;
+     }
+ 
+ static void filltable ()
+@@ -426,7 +506,7 @@
+     
+     hashend = hashtbl + hashsize;
+     for (freepointer = hashtbl;
+-      (freepointer->flagfield & USED)  &&  freepointer < hashend;
++      freepointer < hashend  &&  (freepointer->flagfield & USED);
+       freepointer++)
+ 	;
+     overflows = 0;
+@@ -648,7 +728,15 @@
+ 	}
+     if (!silent)
+ 	(void) fprintf (stderr, "\n");
+-    (void) fclose (dictf);
++    h = ferror (dictf);
++    if (fclose (dictf) != 0)
++	h = 1;
++    if (h)
++	{
++	(void) fprintf (stderr, BHASH_C_READ_FAILED, Dfile,
++	  MAYBE_CR (stderr));
++	exit (1);
++	}
+     }
+ 
+ static unsigned int newcount ()
+@@ -661,6 +749,7 @@
+     ichar_t		lastibuf[sizeof ibuf / sizeof (ichar_t)];
+     int			headercounted;
+     int			followcase;
++    int			read_error;
+     register char *	cp;
+ 
+     if (!silent)
+@@ -712,7 +801,15 @@
+ 	    }
+ 	(void) icharcpy (lastibuf, ibuf);
+ 	}
+-    (void) fclose (d);
++    read_error = ferror (d);
++    if (fclose (d) != 0)
++	read_error = 1;
++    if (read_error)
++	{
++	(void) fprintf (stderr, BHASH_C_READ_FAILED, Dfile,
++	  MAYBE_CR (stderr));
++	exit (1);
++	}
+     if (!silent)
+ 	(void) fprintf (stderr, BHASH_C_WORD_COUNT, count);
+ 

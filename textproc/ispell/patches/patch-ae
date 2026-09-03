@@ -1,8 +1,14 @@
 $NetBSD: patch-ae,v 1.5 2025/10/26 19:16:53 vins Exp $
 
---- lookup.c.orig	Thu Apr 14 21:25:52 2005
+Use pointer-width offsets when reconstructing dictionary pointers, and stop
+cleanly at a malformed variant-chain tail.
+
+Keep the hunks at their current release offsets.  GNV patch's backup path
+loses filename case when a hunk must be relocated on OpenVMS.
+
+--- lookup.c.orig
 +++ lookup.c
-@@ -247,11 +247,11 @@ int linit ()
+@@ -272,11 +272,11 @@
  	    if (dp->word == (unsigned char *) -1)
  		dp->word = NULL;
  	    else
@@ -16,7 +22,7 @@ $NetBSD: patch-ae,v 1.5 2025/10/26 19:16:53 vins Exp $
  	    }
  	}
  
-@@ -259,12 +259,12 @@ int linit ()
+@@ -284,12 +284,12 @@
  	{
  	if (entry->stripl)
  	    entry->strip =
@@ -31,7 +37,7 @@ $NetBSD: patch-ae,v 1.5 2025/10/26 19:16:53 vins Exp $
  	else
  	    entry->affix = NULL;
  	}
-@@ -531,7 +531,7 @@ struct dent * lookup (s, dotree)
+@@ -531,7 +531,7 @@
  	if (s1  &&  s1[0] == schar[0]
  	  &&  strcmp ((char *) s1 + 1, (char *) schar + 1) == 0)
  	    return dp;

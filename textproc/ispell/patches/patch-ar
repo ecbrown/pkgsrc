@@ -1,8 +1,13 @@
 $NetBSD: patch-ar,v 1.2 2014/05/14 02:28:13 rodent Exp $
 
---- ijoin.c.orig	Thu Apr 14 14:38:23 2005
+Remove an obsolete declaration that conflicts with the standard prototype.
+
+Keep the hunk at its current release offset.  GNV patch's backup path loses
+filename case when a hunk must be relocated on OpenVMS.
+
+--- ijoin.c.orig
 +++ ijoin.c
-@@ -169,8 +169,6 @@ static char *		tabchar = " \t"; /* Field separator cha
+@@ -172,8 +172,6 @@
  static int		unpairable1 = 0; /* NZ if -a1 */
  static int		unpairable2 = 0; /* NZ if -a2 */
  
