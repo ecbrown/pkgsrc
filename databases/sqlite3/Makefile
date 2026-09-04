@@ -4,6 +4,7 @@
 
 DISTNAME=	sqlite-autoconf-${SQLITE3_DISTVERSION}
 PKGNAME=	sqlite3-${SQLITE3_VERSION}
+PKGREVISION=	1
 CATEGORIES=	databases
 
 MAINTAINER=	pkgsrc-users@NetBSD.org
@@ -22,6 +23,47 @@ CONFIGURE_ARGS+=	--prefix=${PREFIX}
 PKGCONFIG_OVERRIDE+=	sqlite3.pc.in
 
 .include "../../mk/bsd.prefs.mk"
+
+.if ${OPSYS} == "OpenVMS"
+# The bundled bootstrap Jim Tcl assumes fork(2) and waitpid(2).  OpenVMS has
+# neither POSIX process primitive, but the SQLite amalgamation itself needs no
+# generated source, so build it directly using upstream's documented flags.
+NO_CONFIGURE=	yes
+
+CFLAGS+=	-DSQLITE_OS_UNIX=1
+CFLAGS+=	-DSQLITE_THREADSAFE=1
+CFLAGS+=	-DSQLITE_OMIT_LOAD_EXTENSION=1
+CFLAGS+=	-DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS4
+CFLAGS+=	-DSQLITE_ENABLE_FTS5
+CFLAGS+=	-DSQLITE_ENABLE_GEOPOLY -DSQLITE_ENABLE_RTREE
+CFLAGS+=	-DSQLITE_ENABLE_MATH_FUNCTIONS -DSQLITE_ENABLE_PERCENTILE
+CFLAGS+=	-DSQLITE_ENABLE_SESSION -DSQLITE_ENABLE_PREUPDATE_HOOK
+
+INSTALLATION_DIRS+=	bin include lib lib/pkgconfig ${PKGMANDIR}/man1
+
+do-build:
+	cd ${WRKSRC} && ${CC} ${CFLAGS} ${CPPFLAGS} -c sqlite3.c -o sqlite3.o
+	cd ${WRKSRC} && ${AR} cr libsqlite3.a sqlite3.o
+	cd ${WRKSRC} && ${CC} ${CFLAGS} ${CPPFLAGS} shell.c sqlite3.c \
+	    -o sqlite3 ${LDFLAGS}
+	${SED} -e 's|@prefix@|${PREFIX}|g' \
+	    -e 's|@exec_prefix@|${PREFIX}|g' \
+	    -e 's|@libdir@|${PREFIX}/lib|g' \
+	    -e 's|@includedir@|${PREFIX}/include|g' \
+	    -e 's|@PACKAGE_VERSION@|${SQLITE3_VERSION}|g' \
+	    -e 's|@LDFLAGS_[A-Z]*@||g' \
+	    ${WRKSRC}/sqlite3.pc.in > ${WRKSRC}/sqlite3.pc
+
+do-install:
+	${INSTALL_PROGRAM} ${WRKSRC}/sqlite3 ${DESTDIR}${PREFIX}/bin/sqlite3
+	${INSTALL_DATA} ${WRKSRC}/sqlite3.h ${WRKSRC}/sqlite3ext.h \
+	    ${DESTDIR}${PREFIX}/include
+	${INSTALL_DATA} ${WRKSRC}/libsqlite3.a ${DESTDIR}${PREFIX}/lib
+	${INSTALL_DATA} ${WRKSRC}/sqlite3.pc \
+	    ${DESTDIR}${PREFIX}/lib/pkgconfig
+	${INSTALL_MAN} ${WRKSRC}/sqlite3.1 \
+	    ${DESTDIR}${PREFIX}/${PKGMANDIR}/man1
+.endif
 
 .if ${USE_CROSS_COMPILE:tl} == "yes"
 CONFIGURE_ENV+=		CC_FOR_BUILD=${TOOLS_CMD.native-cc:Q}
@@ -520,17 +562,21 @@ BUILDLINK_TRANSFORM+=	rm:-DSQLITE_HAVE_ZLIB=1
 
 # SQLITE_OMIT_LOAD_EXTENSION (old: !SQLITE_ENABLE_LOAD_EXTENSION)
 #
-# Make sure this is consistently enabled on all platforms -- this way
-# the build fails early if something goes wrong with getting at dlopen.
-# (XXX If we have platforms without dlopen, we may want to disable this
-# on those platforms.)
+# Make sure this is consistently enabled on platforms with dlopen -- this
+# way the build fails early if something goes wrong with getting at dlopen.
+# OpenVMS has shareable images but no POSIX dlopen interface, so build the
+# core database and shell without run-time extension loading there.
 #
 # https://www.sqlite.org/compile.html#omit_load_extension
+.if ${OPSYS} == "OpenVMS"
+CONFIGURE_ARGS+=	--disable-load-extension
+.else
 CONFIGURE_ARGS+=	--enable-load-extension
 
 # Uses dlopen and friends but doesn't use -ldl on Linux.
 # See http://www.sqlite.org/cvstrac/tktview?tn=3555
 LIBS+=		${BUILDLINK_LDADD.dl}
+.endif
 
 # Solaris needs -lrt for nanosleep, PR pkg/58714
 LIBS.SunOS+=	-lrt
@@ -546,7 +592,9 @@ post-install:
 		${DESTDIR}${PREFIX}/lib/libsqlite3.dylib
 .endif
 
+.if ${OPSYS} != "OpenVMS"
 .include "../../mk/dlopen.buildlink3.mk"
-.include "../../mk/pthread.buildlink3.mk"
 .include "../../mk/readline.buildlink3.mk"
+.endif
+.include "../../mk/pthread.buildlink3.mk"
 .include "../../mk/bsd.pkg.mk"

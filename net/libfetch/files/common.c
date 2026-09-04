@@ -66,6 +66,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifndef SSL_CA_CERT_FILE
+#define SSL_CA_CERT_FILE NULL
+#endif
+
 #ifndef MSG_NOSIGNAL
 #include <signal.h>
 #endif
@@ -207,6 +211,8 @@ fetch_default_port(const char *scheme)
 		return (FTP_DEFAULT_PORT);
 	if (strcasecmp(scheme, SCHEME_HTTP) == 0)
 		return (HTTP_DEFAULT_PORT);
+	if (strcasecmp(scheme, SCHEME_HTTPS) == 0)
+		return (HTTPS_DEFAULT_PORT);
 	return (0);
 }
 
@@ -450,6 +456,11 @@ fetch_ssl(conn_t *conn, const struct url *URL, int verbose)
 {
 
 #ifdef WITH_SSL
+	const char *ca_file;
+	X509_VERIFY_PARAM *param;
+	unsigned char addrbuf[16];
+	int is_ip_address, verify_peer;
+
 	/* Init the SSL library and context */
 	if (!SSL_library_init()){
 		fprintf(stderr, "SSL library init failed\n");
@@ -460,9 +471,31 @@ fetch_ssl(conn_t *conn, const struct url *URL, int verbose)
 
 	conn->ssl_meth = SSLv23_client_method();
 	conn->ssl_ctx = SSL_CTX_new(conn->ssl_meth);
+	if (conn->ssl_ctx == NULL) {
+		fprintf(stderr, "SSL context creation failed\n");
+		ERR_print_errors_fp(stderr);
+		return (-1);
+	}
 	SSL_CTX_set_mode(conn->ssl_ctx, SSL_MODE_AUTO_RETRY);
-	if (getenv("SSL_NO_VERIFY_PEER") == NULL) {
-		SSL_CTX_set_default_verify_paths(conn->ssl_ctx);
+	verify_peer = getenv("SSL_NO_VERIFY_PEER") == NULL;
+	if (verify_peer) {
+		ca_file = getenv("SSL_CERT_FILE");
+		if (ca_file == NULL)
+			ca_file = SSL_CA_CERT_FILE;
+		if (ca_file != NULL) {
+			if (!SSL_CTX_load_verify_locations(conn->ssl_ctx,
+			    ca_file, NULL)) {
+				fprintf(stderr,
+				    "Unable to load CA certificates from %s\n",
+				    ca_file);
+				ERR_print_errors_fp(stderr);
+				return (-1);
+			}
+		} else if (!SSL_CTX_set_default_verify_paths(conn->ssl_ctx)) {
+			fprintf(stderr, "Unable to load default CA certificates\n");
+			ERR_print_errors_fp(stderr);
+			return (-1);
+		}
 		SSL_CTX_set_verify(conn->ssl_ctx, SSL_VERIFY_PEER, NULL);
 	}
 
@@ -471,10 +504,36 @@ fetch_ssl(conn_t *conn, const struct url *URL, int verbose)
 		fprintf(stderr, "SSL context creation failed\n");
 		return (-1);
 	}
+	is_ip_address = inet_pton(AF_INET, URL->host, addrbuf) == 1;
+#ifdef INET6
+	if (!is_ip_address)
+		is_ip_address = inet_pton(AF_INET6, URL->host, addrbuf) == 1;
+#endif
+	if (verify_peer) {
+		param = SSL_get0_param(conn->ssl);
+		if (is_ip_address) {
+			if (!X509_VERIFY_PARAM_set1_ip_asc(param, URL->host)) {
+				fprintf(stderr,
+				    "TLS IP address verification setup failed for %s\n",
+				    URL->host);
+				return (-1);
+			}
+		} else {
+			X509_VERIFY_PARAM_set_hostflags(param,
+			    X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+			if (!X509_VERIFY_PARAM_set1_host(param, URL->host, 0)) {
+				fprintf(stderr,
+				    "TLS hostname verification setup failed for %s\n",
+				    URL->host);
+				return (-1);
+			}
+		}
+	}
 	conn->buf_events = 0;
 	SSL_set_fd(conn->ssl, conn->sd);
 #if OPENSSL_VERSION_NUMBER >= 0x0090806fL && !defined(OPENSSL_NO_TLSEXT)
-	if (!SSL_set_tlsext_host_name(conn->ssl, (char *)(uintptr_t)URL->host)) {
+	if (!is_ip_address &&
+	    !SSL_set_tlsext_host_name(conn->ssl, (char *)(uintptr_t)URL->host)) {
 		fprintf(stderr,
 		    "TLS server name indication extension failed for host %s\n",
 		    URL->host);

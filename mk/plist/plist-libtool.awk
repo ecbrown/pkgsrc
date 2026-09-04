@@ -52,6 +52,7 @@
 BEGIN {
 	LIBTOOL_EXPAND = ENVIRON["LIBTOOL_EXPAND"] ? ENVIRON["LIBTOOL_EXPAND"] : "/usr/pkgsrc/mk/plist/libtool-expand"
 	LIBTOOLIZE_PLIST = ENVIRON["LIBTOOLIZE_PLIST"] ? ENVIRON["LIBTOOLIZE_PLIST"] : "yes"
+	OPSYS = ENVIRON["OPSYS"] ? ENVIRON["OPSYS"] : ""
 	PREFIX = ENVIRON["PREFIX"] ? ENVIRON["PREFIX"] : "/usr/pkg"
 	TEST = ENVIRON["TEST"] ? ENVIRON["TEST"] : "test"
 
@@ -70,8 +71,14 @@ BEGIN {
 /^[^@]/ && ($0 !~ "^" IGNORE_LA_REGEXP "$") && /\.la$/ {
 	print_entry($0)
 	cmd = TEST " -f " PREFIX "/" $0
-	if (system(cmd) == 0) {
+	# awk's system() invokes DCL on OpenVMS, which cannot execute the POSIX
+	# pathname in TEST.  Run both validation and expansion in Bash instead;
+	# libtool-expand performs its own file validation.
+	if (OPSYS == "OpenVMS" || system(cmd) == 0) {
 		cmd = "cd " PREFIX " && " LIBTOOL_EXPAND " " $0
+		if (OPSYS == "OpenVMS") {
+			cmd = "bash -c \"" cmd "\""
+		}
 		while (cmd | getline) {
 			print_entry($0)
 		}

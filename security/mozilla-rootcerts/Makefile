@@ -4,6 +4,7 @@
 # and bump its version when updating this package.
 
 DISTNAME=	mozilla-rootcerts-1.1.${CERTDATA_DATE}
+PKGREVISION=	1
 CATEGORIES=	security
 MASTER_SITES=	-https://hg.mozilla.org/mozilla-central/raw-file/${CERTDATA_COMMIT}/security/nss/lib/ckfw/builtins/certdata.txt
 EXTRACT_SUFX=	# empty
@@ -59,7 +60,10 @@ do-build:
 	${MKDIR} ${WRKSRC}/certs
 	cd ${WRKSRC}/certs && \
 	${SH} ${WRKSRC}/${CERT_SCRIPT} -f ${WRKSRC}/certdata.txt extract
-	${LS} -rt ${WRKSRC}/certs/*.pem | ${XARGS} ${CAT} >${WRKSRC}/cacert.pem
+	${RM} -f ${WRKSRC}/cacert.pem
+	for cert in ${WRKSRC}/certs/*.pem; do \
+		${CAT} "$$cert" >>${WRKSRC}/cacert.pem || exit 1; \
+	done
 
 do-install:
 	${INSTALL_SCRIPT} ${WRKSRC}/${CERT_SCRIPT} \

@@ -1,0 +1,5 @@
+openai-c is a small command-line client for sending text prompts to the
+OpenAI Responses API.  It is implemented in C with OpenSSL and has no Python,
+Node.js, Rust, curl, or JSON-library dependency.  It verifies TLS certificates,
+accepts prompts as arguments or on standard input, extracts output text from
+JSON responses, and can emit the complete response for troubleshooting.

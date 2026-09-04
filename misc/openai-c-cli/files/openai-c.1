@@ -1,0 +1,70 @@
+.\" $NetBSD$
+.Dd September 4, 2026
+.Dt OPENAI-C 1
+.Os
+.Sh NAME
+.Nm openai-c
+.Nd small OpenAI Responses API command-line client
+.Sh SYNOPSIS
+.Nm
+.Op Fl m Ar model
+.Op Fl s Ar instructions
+.Op Fl Fl base-url Ar url
+.Op Fl Fl ca-file Ar file
+.Op Fl Fl raw
+.Op Ar prompt ...
+.Nm
+.Fl Fl extract
+.Sh DESCRIPTION
+.Nm
+sends a text prompt to the OpenAI Responses API over a verified TLS
+connection and prints the returned output text.
+If no prompt arguments are present, the prompt is read from standard input.
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl m Ar model , Fl Fl model Ar model
+Select the model.  The default is
+.Dq gpt-5-mini .
+.It Fl s Ar text , Fl Fl instructions Ar text
+Send developer instructions with the prompt.
+.It Fl Fl base-url Ar url
+Use an alternate HTTPS API base URL.
+.It Fl Fl ca-file Ar file
+Use the named PEM CA bundle for certificate verification.
+.It Fl Fl raw
+Print the complete JSON response instead of extracting output text.
+.It Fl Fl extract
+Read a saved Responses API JSON document from standard input and print its
+output text without making a network request.
+.It Fl V , Fl Fl version
+Print the program version.
+.It Fl h , Fl Fl help
+Print a short usage message.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width OPENAI_ORGANIZATION
+.It Ev OPENAI_API_KEY
+Required API key.
+.It Ev OPENAI_MODEL
+Model used when no command-line model is given.
+.It Ev OPENAI_BASE_URL
+HTTPS API base URL; defaults to
+.Pa https://api.openai.com/v1 .
+.It Ev OPENAI_ORGANIZATION
+Optional organization identifier header.
+.It Ev OPENAI_PROJECT
+Optional project identifier header.
+.It Ev SSL_CERT_FILE
+PEM CA bundle used instead of the pkgsrc Mozilla root certificate bundle.
+.El
+.Sh EXAMPLES
+.Bd -literal -offset indent
+openai-c "Explain OpenVMS logical names briefly"
+printf '%s\n' "Summarize this input" | openai-c -m gpt-5-mini
+openai-c --extract < saved-response.json
+.Ed
+.Sh EXIT STATUS
+.Ex -std
+Configuration and usage errors return 1, network or TLS errors return 2,
+HTTP API errors return 3, and malformed or text-free JSON responses return 4.

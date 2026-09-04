@@ -133,6 +133,15 @@ BUILDLINK_PREFIX.openssl=	/usr
 BUILDLINK_PREFIX.openssl=	/boot/system/develop
 .      elif !empty(H_OPENSSLV:M/boot/common/*)
 BUILDLINK_PREFIX.openssl=	/boot/common
+.      elif !empty(H_OPENSSLV:M/OPENSSL/*)
+BUILDLINK_PREFIX.openssl=	/OPENSSL/..
+BUILDLINK_PASSTHRU_DIRS+=	/OPENSSL/..
+.      elif !empty(H_OPENSSLV:M/sys$$common/ssl3/*)
+BUILDLINK_PREFIX.openssl=	/sys$$common/ssl3
+BUILDLINK_PASSTHRU_DIRS+=	/sys$$common/ssl3
+.      elif !empty(H_OPENSSLV:M/sys$$common/ssl111/*)
+BUILDLINK_PREFIX.openssl=	/sys$$common/ssl111
+BUILDLINK_PASSTHRU_DIRS+=	/sys$$common/ssl111
 .      endif
 .    endif
 .  endif
@@ -156,6 +165,8 @@ SSLDIR=	/boot/system/data/ssl
 .      else
 SSLDIR=	/boot/common/data/ssl
 .      endif
+.    elif ${OPSYS} == "OpenVMS"
+SSLDIR=	/OPENSSL/..
 .    else
 SSLDIR=	/etc/ssl 		# most likely place
 .    endif

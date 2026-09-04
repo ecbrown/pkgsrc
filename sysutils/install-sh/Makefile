@@ -23,8 +23,9 @@ INSTALL_SCRIPT=		\
 INSTALL_SCRIPT_DIR=	\
 	${SH} ${WRKSRC}/install-sh -d -o ${BINOWN} -g ${BINGRP} -m ${PKGDIRMODE}
 
+# Some platforms pre-create WRKSRC, so copy FILESDIR's contents.
 do-extract:
-	@${CP} -R ${FILESDIR} ${WRKSRC}
+	@${CP} -R ${FILESDIR}/. ${WRKSRC}
 
 do-configure:
 	${SED}	-e "s|@DEFAULT_INSTALL_MODE@|"${PKGDIRMODE}"|g"		\

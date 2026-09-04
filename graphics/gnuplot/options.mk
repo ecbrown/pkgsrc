@@ -6,6 +6,14 @@ PKG_OPTIONS_OPTIONAL_GROUPS=	gui
 PKG_OPTIONS_GROUP.gui=		qt5 qt6
 PKG_SUGGESTED_OPTIONS=		cairo cerf gd x11
 
+.include "../../mk/bsd.prefs.mk"
+
+# Start with the portable terminal drivers on OpenVMS.  Each suggested
+# graphics option otherwise pulls in a substantial, not-yet-ported stack.
+.if ${OPSYS} == "OpenVMS"
+PKG_SUGGESTED_OPTIONS=		# empty
+.endif
+
 .include "../../mk/bsd.options.mk"
 
 PLIST_VARS+=	gnuplot-pdf-doc lua qt x11
@@ -19,10 +27,14 @@ CONFIGURE_ARGS+=	--without-cairo
 
 .if !empty(PKG_OPTIONS:Mcerf)
 .include "../../devel/libcerf/buildlink3.mk"
+.else
+CONFIGURE_ARGS+=	--without-libcerf
 .endif
 
 .if !empty(PKG_OPTIONS:Mgd)
 .include "../../graphics/gd/buildlink3.mk"
+.else
+CONFIGURE_ARGS+=	--without-gd
 .endif
 
 .if !empty(PKG_OPTIONS:Mlua)

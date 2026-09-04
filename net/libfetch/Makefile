@@ -1,7 +1,7 @@
 # $NetBSD: Makefile,v 1.70 2026/04/16 10:16:29 wiz Exp $
 
 DISTNAME=	libfetch-2.40
-PKGREVISION=	5
+PKGREVISION=	7
 CATEGORIES=	net
 MASTER_SITES=	# empty
 DISTFILES=	# empty
@@ -26,7 +26,8 @@ INSTALL_TARGET=	install includes
 MAKE_ENV+=	SED=${SED:Q}
 
 do-extract:
-	${CP} -r ${FILESDIR} ${WRKSRC}
+	${MKDIR} ${WRKSRC}
+	${CP} -R ${FILESDIR}/. ${WRKSRC}
 	${TOUCH} ${WRKSRC}/fetch.cat3
 
 SUBST_CLASSES+=	pc

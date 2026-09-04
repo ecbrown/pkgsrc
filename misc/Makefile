@@ -242,6 +242,7 @@ SUBDIR+=	omm
 SUBDIR+=	open2300
 SUBDIR+=	open2300-mysql
 SUBDIR+=	open2300-pgsql
+SUBDIR+=	openai-c-cli
 SUBDIR+=	orca
 SUBDIR+=	p5-App-MrShell
 SUBDIR+=	p5-Array-PrintCols

@@ -7,6 +7,7 @@
 # change in the pkg_* tools that pkgsrc relies on for proper operation.
 
 PKGNAME=		pkg_install-${VERSION}
+PKGREVISION=		1
 CATEGORIES=		pkgtools
 
 MAINTAINER=		agc@NetBSD.org
@@ -125,6 +126,20 @@ BUILDLINK_API_DEPENDS.libarchive+=	libarchive>=3.3.1
 
 .include "options.mk"
 
+.if ${OPSYS} == "OpenVMS" && !empty(PKG_OPTIONS:Mopenssl)
+MAKE_ENV+=		GNV_OPT_DIR=${WRKDIR}/.vms_opt
+
+post-extract: openvms-openssl-options
+
+.PHONY: openvms-openssl-options
+openvms-openssl-options:
+	${MKDIR} ${WRKDIR}/.vms_opt
+.  for prog in pkg_add pkg_admin pkg_create pkg_delete pkg_info
+	${CP} ${OPENSSL_OPENVMS_GNV_OPT} \
+	    '${WRKDIR}/.vms_opt/gnv$$${prog}.opt'
+.  endfor
+.endif
+
 .if empty(USE_BUILTIN.bzip2:M[yY][eE][sS]) || \
     empty(USE_BUILTIN.zlib:M[yY][eE][sS])
 USE_BUILTIN.libarchive=	no
@@ -159,6 +174,31 @@ LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_lib_md_MD5Init=no
 # declare it.  Use libarchive's fallback instead of an implicit-int call that
 # can truncate time_t.
 LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_timegm=no
+# VSI's linker also returns success for unresolved function references.  Cache
+# APIs that are either undeclared or unavailable so libarchive selects its
+# portability paths and does not leave unresolved symbols in the final images.
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_closefrom=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_fdopendir=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_fchdir=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_fstatat=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_futimens=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_futimes=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_futimesat=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_issetugid=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_linkat=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_lutimes=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_mkfifo=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_mknod=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_openat=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_posix_spawn=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_posix_spawnp=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_func_readpassphrase=no
+# Missing -l arguments are only warnings to VSI's gcc driver, so disable
+# optional libraries that are not installed instead of recording them in
+# libarchive.pc and every pkg_install link command.
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_lib_acl_acl_get_file=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_lib_b2_blake2sp_init=no
+LIBARCHIVE_CONFIGURE_ENV+=	ac_cv_lib_richacl_richacl_get_file=no
 # GNV does not provide ranlib; VSI's librarian needs no indexing pass.
 LIBARCHIVE_CONFIGURE_ENV+=	RANLIB=${TOOLS_PLATFORM.ranlib:Q}
 .  endif

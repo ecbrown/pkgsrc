@@ -1680,12 +1680,25 @@ preserve_meta_data_file(struct pkg_task *pkg, const char *name)
 	new_file = xasprintf("%s/%s", pkg->install_logdir, name);
 	rv = 0;
 #ifdef __VMS
-	make_path_deletable(old_file);
+	if (fexists(old_file)) {
+		make_path_deletable(old_file);
+		/* OpenVMS rename() cannot replace an existing destination. */
+		make_path_deletable(new_file);
+		if (unlink(new_file) == -1 && errno != ENOENT) {
+			warn("%s: can't remove old %s at %s", pkg->pkgname,
+			    name, new_file);
+			rv = -1;
+			goto out;
+		}
+	}
 #endif
 	if (rename(old_file, new_file) == -1 && errno != ENOENT) {
 		warn("%s: can't move %s from %s to %s", pkg->pkgname, name, old_file, new_file);
 		rv = -1;
 	}
+#ifdef __VMS
+out:
+#endif
 	free(old_file);
 	free(new_file);
 	return rv;

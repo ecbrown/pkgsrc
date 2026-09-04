@@ -16,7 +16,7 @@ PKG_OPTIONS_GROUP.screen=	curses wide-curses slang
 PKG_OPTIONS_LEGACY_OPTS+=	ncurses:curses ncursesw:wide-curses
 
 .if ${OPSYS} == "OpenVMS"
-PKG_SUGGESTED_OPTIONS=		curses
+PKG_SUGGESTED_OPTIONS=		curses openssl
 .else
 PKG_SUGGESTED_OPTIONS=		inet6 openssl wide-curses
 .endif
@@ -79,6 +79,12 @@ CONFIGURE_ARGS+=	--with-gnutls=${BUILDLINK_PREFIX.gnutls}
 .elif !empty(PKG_OPTIONS:Mopenssl)
 CONFIGURE_ARGS+=	--with-ssl=${BUILDLINK_PREFIX.openssl}
 .  include "../../security/openssl/buildlink3.mk"
+.  if ${OPSYS} == "OpenVMS"
+# VSI's include root is reported as /OPENSSL/.., so Lynx's configure test does
+# not recognize that the headers use the modern openssl/ subdirectory layout.
+CPPFLAGS+=		-DUSE_OPENSSL_INCL
+DEPENDS+=		mozilla-rootcerts>=1.1.20260715:../../security/mozilla-rootcerts
+.  endif
 .else
 CONFIGURE_ARGS+=	--without-ssl
 .endif

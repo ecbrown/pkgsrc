@@ -2,7 +2,7 @@
 
 DISTNAME=	lynx2.9.2
 PKGNAME=	${DISTNAME:S/lynx/lynx-/:S/rel//}
-PKGREVISION=	8
+PKGREVISION=	9
 CATEGORIES=	www
 MASTER_SITES=	https://invisible-mirror.net/archives/lynx/tarballs/
 EXTRACT_SUFX=	.tar.bz2
@@ -90,9 +90,27 @@ CONFIGURE_ENV.OpenVMS+=	cf_cv_netlibs=
 CONFIGURE_ENV.OpenVMS+=	cf_cv_need_xopen_extension=NCURSES_WIDECHAR
 CPPFLAGS.OpenVMS+=	-DNOUSERS -DTCPIP_SERVICES -Dreadonly=lynx_readonly
 MAKE_FLAGS.OpenVMS+=	BUILD_CPPFLAGS=${CPPFLAGS:Q}
-MAKE_ENV.OpenVMS+=	GNV_OPT_DIR=${FILESDIR}
+MAKE_ENV.OpenVMS+=	GNV_OPT_DIR=${WRKDIR}/.vms_opt
 
 .if ${OPSYS} == "OpenVMS"
+post-extract: vms-opt-setup
+
+.PHONY: vms-opt-setup
+vms-opt-setup:
+	${MKDIR} ${WRKDIR}/.vms_opt
+	${CP} '${FILESDIR}/gnv$$lynx.opt' '${WRKDIR}/.vms_opt/'
+.  if !empty(PKG_OPTIONS:Mopenssl)
+	${CAT} ${OPENSSL_OPENVMS_GNV_OPT} >> \
+	    '${WRKDIR}/.vms_opt/gnv$$lynx.opt'
+.  endif
+
+.  if !empty(PKG_OPTIONS:Mopenssl)
+SUBST_CLASSES+=		vms-ca
+SUBST_STAGE.vms-ca=	pre-configure
+SUBST_FILES.vms-ca=	lynx.cfg
+SUBST_SED.vms-ca=	-e 's|^\#SSL_CERT_FILE:/etc/ssl/certs/ca-certificates.crt|SSL_CERT_FILE:${PREFIX}/share/mozilla-rootcerts/cacert.pem|'
+.  endif
+
 SUBST_CLASSES+=		makeuctb-link
 SUBST_STAGE.makeuctb-link=	post-configure
 SUBST_FILES.makeuctb-link=	src/chrtrans/makefile
@@ -116,6 +134,10 @@ SUBST_SED.vms-www=	-e 's|$$(LOB)/HTDOS$$o$$|$$(LOB)/HTDOS$$o \
 # arguments on OpenVMS.  Complete the recursive part of install-doc with cp
 # and then apply the compression that the upstream target attempted.
 post-install:
+	${INSTALL_DATA} ${WRKSRC}/CHANGES ${WRKSRC}/COPYHEADER \
+		${WRKSRC}/COPYHEADER.asc ${WRKSRC}/COPYING \
+		${WRKSRC}/COPYING.asc ${WRKSRC}/PROBLEMS ${WRKSRC}/README \
+		${DESTDIR}${PREFIX}/share/lynx/lynx_doc/
 	${CP} -R ${WRKSRC}/docs ${WRKSRC}/samples ${WRKSRC}/test \
 		${DESTDIR}${PREFIX}/share/lynx/lynx_doc/
 	${TOOLS_GZIP_CMD} -f \

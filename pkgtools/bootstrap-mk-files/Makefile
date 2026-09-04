@@ -21,8 +21,9 @@ USE_TOOLS+=	sed
 
 INSTALLATION_DIRS=	share/mk
 
+# Some platforms pre-create WRKSRC, so copy FILESDIR's contents.
 do-extract:
-	${RUN} ${CP} -R ${FILESDIR} ${WRKSRC}
+	${RUN} ${CP} -R ${FILESDIR}/. ${WRKSRC}
 
 do-configure:
 	cd ${WRKSRC}; for file in bsd.* sys.mk; do			\

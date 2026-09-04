@@ -1,7 +1,7 @@
 # $NetBSD: Makefile,v 1.41 2026/08/24 18:35:28 drixter Exp $
 
 DISTNAME=	gzip-1.14
-PKGREVISION=	1
+PKGREVISION=	2
 CATEGORIES=	archivers
 # does not provide uncompressed tarball, needed due to bootstrapping
 #MASTER_SITES=	${MASTER_SITE_GNU:=gzip/}
@@ -17,6 +17,9 @@ CONFLICTS+=		gzip-base-[0-9]* gzip-info-[0-9]* zutils-[0-9]*
 
 GNU_CONFIGURE=	yes
 CONFIGURE_ARGS.OpenVMS+=	--disable-dependency-tracking
+# The VSI C RTL exports this Microsoft-named symbol, but does not implement
+# the compatible MSVC invalid-parameter-handler interface expected by gnulib.
+CONFIGURE_ENV.OpenVMS+=	ac_cv_func__set_invalid_parameter_handler=no
 MAKE_FLAGS+=	manlinks=so
 INFO_FILES=	yes
 CHECK_PERMS=	no	# can't depend on checkperms; its distfile is gzipped

@@ -1,0 +1,3 @@
+@comment $NetBSD$
+bin/openai-c
+man/man1/openai-c.1

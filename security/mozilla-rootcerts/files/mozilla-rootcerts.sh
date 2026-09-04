@@ -126,8 +126,9 @@ extract)
 	#
 	# Certificates in octal-encoded DER format are delimited by
 	# "CKA_VALUE MULTILINE_OCTAL"/"END" pairs.  Convert them into
-	# long character strings and pipe them through openssl to
-	# convert from DER to PEM format.
+	# long character strings in temporary files, then convert them from DER
+	# to PEM format.  Do not pipe the binary data directly to openssl: on
+	# OpenVMS, awk's popen implementation invokes DCL for that pipeline.
 	#
 	# The resulting PEM format certificates are saved as
 	# "mozilla-rootcert-<n>.pem" in the current working directory.
@@ -136,7 +137,7 @@ extract)
 	# so force the locale to "C". 
 	# Setting just LANG is not enough. LC_ALL has higher priority.
 	#
-	cat "$certfile" | LC_ALL=C LANG=C ${AWK} -v OPENSSL=${OPENSSL} '
+	cat "$certfile" | LC_ALL=C LANG=C ${AWK} '
 	function base8to10(o,	octal, decimal, power, i, n) {
 		decimal = 0
 		n = split(o, octal, "")
@@ -156,17 +157,16 @@ extract)
 			if ($0 !~ /^CKA_VALUE MULTILINE_OCTAL/) continue
 
 			filename = "mozilla-rootcert-" filenum ".pem"
+			derfile = "mozilla-rootcert-" filenum ".der"
 			filenum++
-			cmd = OPENSSL " x509 -inform der -outform pem -text >" filename
-			print filename
 			while (getline) {
 				if ($0 ~ /^END/) break
 				n = split($0, line, "\\")
 				for (i = 2; i <= n; i++) {
-					printf("%c",  base8to10(line[i])) | cmd
+					printf("%c", base8to10(line[i])) > derfile
 				}
 			}
-			close(cmd)
+			close(derfile)
 			# kill untrusted certificates (not clean, but the script which comes
 			# with "curl" works the same way)
 			untrusted = 0
@@ -187,12 +187,21 @@ extract)
 			if ($0 ~ /^CKA_TRUST_SERVER_AUTH.*CK_TRUST.*CKT_NETSCAPE_UNTRUSTED$/)
 				untrusted = 1
 
-			if (untrusted) {
-				print filename " untrusted"
-				system("rm -f " filename)
-			}
+			print derfile, filename, untrusted > "certificates.list"
 		}
-	}'
+	}' || exit 1
+
+	while read derfile pemfile untrusted; do
+		${ECHO} "$pemfile"
+		if [ "$untrusted" = 1 ]; then
+			${ECHO} "$pemfile untrusted"
+		else
+			${OPENSSL} x509 -inform der -outform pem -text \
+			    -in "$derfile" -out "$pemfile" || exit 1
+		fi
+		${RM} -f "$derfile"
+	done < certificates.list || exit 1
+	${RM} -f certificates.list
 	;;
 install)
 	# ${WHATEVER}/etc/openssl/certs should exist, but an

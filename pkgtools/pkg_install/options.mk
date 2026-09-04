@@ -29,6 +29,10 @@ MAKE_ENV+=		FETCH_WITH_OPENSSL=yes
 LDFLAGS+=		-lssl -lcrypto
 
 .include "../../security/openssl/buildlink3.mk"
+.  if ${OPSYS} == "OpenVMS"
+DEPENDS+=		mozilla-rootcerts>=1.1.20260715:../../security/mozilla-rootcerts
+CPPFLAGS+=		-DSSL_CA_CERT_FILE="\"${PREFIX}/share/mozilla-rootcerts/cacert.pem\""
+.  endif
 .else
 LIBARCHIVE_CONFIGURE_ARGS+=	--without-openssl
 MAKE_ENV+=		FETCH_WITH_OPENSSL=no

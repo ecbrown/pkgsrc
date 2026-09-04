@@ -48,6 +48,7 @@ TOOLS_PLATFORM.mkdir?=		/bin/mkdir.exe -p
 TOOLS_PLATFORM.mktemp?=		/bin/mktemp.exe
 TOOLS_PLATFORM.mv?=		/bin/mv.exe
 TOOLS_PLATFORM.nice?=		/bin/nice.exe
+TOOLS_PLATFORM.openssl?=	${_PKGSRC_TOPDIR}/mk/tools/openssl.OpenVMS
 TOOLS_PLATFORM.patch?=		/bin/patch.exe
 # The VSI kit supplies a native Perl used by bootstrap tools and by packages
 # that need to translate GNV paths before building a native VMS image.

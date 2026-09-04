@@ -1,7 +1,7 @@
 # $NetBSD: Makefile,v 1.78 2025/10/07 18:20:18 wiz Exp $
 
 DISTNAME=	readline-8.3
-PKGREVISION=	1
+PKGREVISION=	2
 CATEGORIES=	devel
 MASTER_SITES=	${MASTER_SITE_GNU:=readline/}
 
@@ -18,6 +18,10 @@ PKGCONFIG_OVERRIDE+=	history.pc.in
 PKGCONFIG_OVERRIDE+=	readline.pc.in
 
 .include "../../mk/bsd.prefs.mk"
+
+# The VSI C RTL exports fnmatch(), but does not provide the fnmatch.h header
+# that readline requires when enabling it.
+CONFIGURE_ENV.OpenVMS+=	ac_cv_func_fnmatch=no
 
 .if ${USE_CROSS_COMPILE:U:tl} == yes
 CONFIGURE_ENV.NetBSD+=	bash_cv_wcwidth_broken=no

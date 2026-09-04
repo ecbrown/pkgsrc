@@ -764,10 +764,15 @@ ${_BLNK_COOKIE.${_pkg_}}:
 	*)              buildlink_dir="${BUILDLINK_DIR}" ;;		\
 	esac;								\
 	files="${.TARGET}.files";					\
-	${AWK} '!/^@/ && (/^include\// || /\.h$$/ || /\.idl$$/ ||	\
-	    /\.pc$$/ || /\/lib[^/]*\.[^/]*$$/ || /^lib\/cmake\// ||	\
-	    /^share\/cmake\//) { print }'				\
-	    "${PKG_DBDIR}/${BUILDLINK_PKGNAME.${_pkg_}}/+CONTENTS" > "$$files"; \
+	if [ "${USE_BUILTIN.${_pkg_}:Uno:tl}" = yes ]; then		\
+		: > "$$files";						\
+	else								\
+		${AWK} '!/^@/ && (/^include\// || /\.h$$/ || /\.idl$$/ || \
+		    /\.pc$$/ || /\/lib[^/]*\.[^/]*$$/ ||		\
+		    /^lib\/cmake\// || /^share\/cmake\//) { print }' \
+		    "${PKG_DBDIR}/${BUILDLINK_PKGNAME.${_pkg_}}/+CONTENTS" \
+		    > "$$files";						\
+	fi;								\
 	cd ${TOOLS_CROSS_DESTDIR}${BUILDLINK_PREFIX.${_pkg_}};		\
 	for filepattern in ${BUILDLINK_FILES.${_pkg_}}; do			\
 		${LS} -1 $$filepattern >> "$$files" 2>/dev/null || ${TRUE}; \

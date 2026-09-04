@@ -1,0 +1,17 @@
+$NetBSD$
+
+Invoking git from a Bash command substitution can loop indefinitely under GNV
+when stream pipes are enabled.  Distribution tarballs have no .git directory,
+so do not invoke it there.
+
+--- src/Makefile.in.orig	2025-10-21 17:28:21.000000000 +0000
++++ src/Makefile.in
+@@ -1555,7 +1555,7 @@ timestamp.h: Makefile
+ 	@echo Making $@
+ 	@echo "#ifndef GNUPLOT_TIMEBASE_H_INCLUDED" >$@t
+ 	@echo "#define GNUPLOT_TIMEBASE_H_INCLUDED" >>$@t
+-	@echo "const char gnuplot_date[] = \"`git --git-dir '$(top_srcdir)/.git' log -1 --date=short --format=%cd || stat -c '%.10y' Makefile.am`\";" >>$@t
++	@echo "const char gnuplot_date[] = \"`test -d '$(top_srcdir)/.git' && git --git-dir '$(top_srcdir)/.git' log -1 --date=short --format=%cd || stat -c '%.10y' Makefile.am`\";" >>$@t
+ 	@echo "#endif /* GNUPLOT_TIMEBASE_H_INCLUDED */" >> $@t
+ 	@if cmp -s $@ $@t; then rm -f $@t; else mv $@t $@; fi
+ 

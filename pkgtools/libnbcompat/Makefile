@@ -26,7 +26,8 @@ CHECK_PORTABILITY_SKIP=	*
 PKGSRC_LOCKTYPE=	none
 IGNORE_CCACHE=		yes
 
+# Some platforms pre-create WRKSRC, so copy FILESDIR's contents.
 do-extract:
-	@${CP} -R ${FILESDIR} ${WRKSRC}
+	@${CP} -R ${FILESDIR}/. ${WRKSRC}
 
 .include "../../mk/bsd.pkg.mk"

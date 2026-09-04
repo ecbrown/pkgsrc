@@ -87,6 +87,11 @@ bash$ bash ./bootstrap/bootstrap \
 Do not relocate the pkgsrc checkout after bootstrapping.  The generated
 configuration and compiler wrapper refer to files in that checkout.
 
+Bootstraps made before the OpenVMS shell-path fix may contain
+`TOOLS_PLATFORM.sh=/bin/bash` in `${PREFIX}/etc/mk.conf`.  Change that value
+to `/bin/bash.exe`; the explicit image suffix is required when nested package
+builds pass the shell pathname directly to `exec`.
+
 ## Current GNV workarounds
 
 - Autoconf is prevented from enabling the broken GNV Bash POSIX mode.
@@ -138,8 +143,25 @@ on the reference VSI OpenVMS x86-64 system:
 - `ispell-3.4.06nb3`: native images, the American English dictionary, DCL and
   GNV protocol modes, external filters, and transactional updates to files and
   personal dictionaries are validated.
-- `lynx-2.9.2nb8`: curses UI, local-file rendering, and HTTP retrieval are
-  validated.  The initial port deliberately disables NLS, TLS, and IPv6.
+- `pkg_install-20260902nb1`, `libfetch-2.40nb7`, and `fetch-1.9nb4`: HTTPS
+  downloads through the native VSI OpenSSL 3.0 shareable images, certificate
+  verification, and the package-management client are validated.
+- `lynx-2.9.2nb9`: curses UI, local-file rendering, HTTP and HTTPS/TLS
+  retrieval using native OpenVMS VSI OpenSSL 3.0 are validated. NLS and
+  IPv6 remain disabled.
+- `emacs22-22.3nb54`: terminal editing, the generated Info directory, and the
+  installed Emacs manual reached through `M-x info` are validated.
+- `readline-8.3nb2`: the library and headers are installed.  SQLite and
+  gnuplot currently use their own line editors because the GNV termios layer
+  does not yet provide all of GNU readline's terminal symbols.
+- `sqlite3-3.53.4nb1`: the command-line shell, database operations, and a
+  separately linked C API program are validated.
+- `gnuplot-6.0.5nb1`: the built-in line editor and portable `dumb`, SVG, and
+  PostScript terminals are validated.  The initial OpenVMS package omits the
+  X11, Cairo, GD, Qt, wxWidgets, Lua, AMOS, and external libcerf options.
+- `openai-c-cli-0.1`: a small C/OpenSSL Responses API client, stdin and JSON
+  handling, CA verification, HTTP error decoding, and the live API endpoint
+  are validated.  A valid API key is required for model output.
 - `vim-share-9.2.1025` and `vim-motif-9.2.1025`: runtime files, `xxd`, the
   native MMS-built Huge Vim image, and its DECwindows/Motif X11 GUI are
   validated.  This is release tag `v9.2.1025`, not the moving master branch.
@@ -150,10 +172,67 @@ package:
 ```
 bash$ cd devel/ncurses && bmake clean package && bmake install
 bash$ cd ../../textproc/ispell && bmake clean package && bmake install
+bash$ cd ../../pkgtools/pkg_install && bmake clean package && bmake install
 bash$ cd ../../www/lynx && bmake clean package && bmake install
+bash$ cd ../../editors/emacs22 && bmake clean package && bmake install
+bash$ cd ../../databases/sqlite3 && bmake clean package && bmake install
+bash$ cd ../../graphics/gnuplot && bmake clean package && bmake install
+bash$ cd ../../misc/openai-c-cli && bmake clean package && bmake install
 bash$ cd ../../editors/vim-share && bmake clean package && bmake install
 bash$ cd ../vim-motif && bmake clean package && bmake install
 ```
+
+### TLS and CA certificates
+
+The reference system uses the 32-bit-pointer VSI OpenSSL 3 shareable images,
+`SYS$SHARE:SSL3$LIBSSL_SHR32.EXE` and
+`SYS$SHARE:SSL3$LIBCRYPTO_SHR32.EXE`.  pkgsrc detects their headers through
+the `OPENSSL` logical name.  `security/mozilla-rootcerts` installs the CA
+bundle at `${PREFIX}/share/mozilla-rootcerts/cacert.pem`; the validated HTTPS
+packages use that file by default and honor `SSL_CERT_FILE` as an override.
+
+After installing the stack, both an interactive HTTPS request and the package
+vulnerability database download verify the path:
+
+```
+bash$ lynx https://example.com/
+bash$ pkg_admin -K ${PREFIX}/pkgdb fetch-pkg-vulnerabilities
+```
+
+### Emacs Info, SQLite, and gnuplot
+
+The Emacs package installs its manual and refreshes the top-level Info index.
+Start Emacs and type `M-x info RET`; the menu contains an `Emacs` entry in
+addition to manuals such as gzip, m4, and zcat.
+
+SQLite and the initial terminal-oriented gnuplot build need no graphical
+desktop:
+
+```
+bash$ sqlite3 sample.db 'create table t(x); insert into t values(42); select * from t;'
+bash$ gnuplot -e 'set term dumb; plot sin(x)'
+```
+
+gnuplot also installs its interactive help and SVG/PostScript support under
+`${PREFIX}/share/gnuplot/6.0`.
+
+### OpenAI command-line client
+
+`openai-c` is a compact Responses API client written in C for systems where
+the Rust Codex CLI and the TypeScript/Bun OpenCode client are not practical.
+It is a one-shot LLM client rather than a full coding agent.  Set an API key,
+then pass a prompt as arguments or on standard input:
+
+```
+bash$ export OPENAI_API_KEY='your API key'
+bash$ openai-c 'Explain OpenVMS logical names briefly'
+bash$ printf 'Summarize this text\n' | openai-c -m gpt-5-mini
+```
+
+The default model is `gpt-5-mini`; override it with `-m` or `OPENAI_MODEL`.
+Use `--raw` to retain the complete Responses JSON or `--extract` to extract
+text from a saved response.  TLS verification is always enabled, using the
+Mozilla bundle unless `SSL_CERT_FILE` names another CA file.
 
 Before running ispell, invoke its packaged setup procedure directly from DCL.
 Replace the native and POSIX example prefixes with spellings of the same

@@ -1,7 +1,7 @@
 # $NetBSD: Makefile,v 1.24 2023/10/24 22:10:15 wiz Exp $
 
 DISTNAME=	fetch-1.9
-PKGREVISION=	2
+PKGREVISION=	4
 CATEGORIES=	net
 MASTER_SITES=	# empty
 DISTFILES=	# empty
@@ -31,7 +31,20 @@ CONFIGURE_ENV+=		ac_cv_lib_nsl_gethostbyname=no
 INSTALLATION_DIRS=	bin ${PKGMANDIR}/cat1 ${PKGMANDIR}/man1
 
 do-extract:
-	${CP} -r ${FILESDIR} ${WRKSRC}
+	${MKDIR} ${WRKSRC}
+	${CP} -R ${FILESDIR}/. ${WRKSRC}
 
 .include "../../net/libfetch/buildlink3.mk"
+
+.if ${OPSYS} == "OpenVMS" && !empty(PKG_BUILD_OPTIONS.libfetch:Mopenssl)
+MAKE_ENV+=		GNV_OPT_DIR=${WRKDIR}/.vms_opt
+
+post-extract: openvms-openssl-options
+
+.PHONY: openvms-openssl-options
+openvms-openssl-options:
+	${MKDIR} ${WRKDIR}/.vms_opt
+	${CP} ${OPENSSL_OPENVMS_GNV_OPT} '${WRKDIR}/.vms_opt/gnv$$fetch.opt'
+.endif
+
 .include "../../mk/bsd.pkg.mk"

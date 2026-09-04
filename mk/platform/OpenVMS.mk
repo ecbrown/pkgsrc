@@ -22,6 +22,15 @@ ULIMIT_CMD_memorysize?=	:
 # DECwindows supplies the native X11 implementation.
 X11_TYPE?=		native
 
+# VSI OpenSSL exposes its flattened header directory through the OPENSSL
+# logical.  Record the physical headers here because bmake's exists() cannot
+# resolve POSIX paths containing a dollar sign such as /sys$common/ssl3.
+.if exists(/OPENSSL/opensslconf.h) && exists(/OPENSSL/opensslv.h)
+H_OPENSSLCONF=		/OPENSSL/opensslconf.h
+H_OPENSSLV=		/OPENSSL/opensslv.h
+.endif
+OPENSSL_OPENVMS_GNV_OPT?=	${PKGSRCDIR}/security/openssl/files/openvms-p32-shared.opt
+
 # GNV's gcc frontend uses case-sensitive external names, but the x86-64 kit
 # does not ship its optional supplementary C RTL library.  Prefix C library
 # calls so they resolve directly to the routines exported by DECC$SHR.
@@ -48,6 +57,16 @@ _OPSYS_HAS_INET6=	yes
 _OPSYS_HAS_JAVA=	no
 _OPSYS_HAS_MANZ=	no
 _OPSYS_PTHREAD_AUTO=	yes
+# pthread.h is a module in DECC$RTLDEF.TLB rather than a pathname that
+# bsd.builtin.mk can discover.  POSIX threads are provided by the C RTL and
+# need no additional linker option.
+IS_BUILTIN.pthread=	yes
+# iconv.h is also a C RTL text-library module.  The conversion routines are in
+# DECC$SHR and require no separate libiconv archive.
+IS_BUILTIN.iconv=	yes
+BUILTIN_PKG.iconv=	libiconv-1.19
+BUILTIN_LIB_FOUND.iconv=	no
+ICONV_TYPE=		native
 _OPSYS_SHLIB_TYPE=	none
 _PATCH_CAN_BACKUP=	no
 _USE_RPATH=		no

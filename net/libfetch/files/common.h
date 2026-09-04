@@ -34,6 +34,7 @@
 
 #define FTP_DEFAULT_PORT	21
 #define HTTP_DEFAULT_PORT	80
+#define HTTPS_DEFAULT_PORT	443
 #define FTP_DEFAULT_PROXY_PORT	21
 #define HTTP_DEFAULT_PROXY_PORT	3128
 
@@ -43,6 +44,7 @@
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509v3.h>
 #endif
 
 #if defined(__GNUC__) && __GNUC__ >= 3
