@@ -1,15 +1,16 @@
 @comment $NetBSD: PLIST,v 1.17 2016/09/01 04:14:23 wiz Exp $
-bin/libpng-config
-bin/libpng16-config
-bin/png-fix-itxt
-bin/pngfix
+${PLIST.config}bin/libpng-config
+${PLIST.config}bin/libpng16-config
+${PLIST.tools}bin/png-fix-itxt
+${PLIST.tools}bin/pngfix
 include/libpng16/png.h
 include/libpng16/pngconf.h
 include/libpng16/pnglibconf.h
 include/png.h
 include/pngconf.h
 include/pnglibconf.h
-lib/libpng16.la
+${PLIST.libtool}lib/libpng16.la
+${PLIST.static}lib/libpng16.a
 lib/pkgconfig/libpng.pc
 lib/pkgconfig/libpng16.pc
 man/man3/libpng.3

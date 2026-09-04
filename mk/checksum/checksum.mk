@@ -28,10 +28,11 @@ _COOKIE.checksum=	${_COOKIE.extract}
 .if !empty(TOOLS_PLATFORM.mktool)
 _CHECKSUM_CMD=	${TOOLS_PLATFORM.mktool} checksum
 .else
+_CHECKSUM_SHELL.OpenVMS=	MCR GNU:[BIN]GNV$$BASH.EXE
 _CHECKSUM_CMD=								\
 	${PKGSRC_SETENV}						\
 	    DIGEST=${TOOLS_DIGEST:Q} SED=${TOOLS_CMDLINE_SED:Q}		\
-	    CHECKSUM_SHELL=${OPSYS:MOpenVMS:S/OpenVMS/BASH/:Q}		\
+	    CHECKSUM_SHELL=${_CHECKSUM_SHELL.${OPSYS}:Q}			\
 	    ${AWK} -f ${PKGSRCDIR}/mk/checksum/checksum.awk --
 .endif
 

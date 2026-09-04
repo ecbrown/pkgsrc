@@ -1,0 +1,15 @@
+$NetBSD$
+
+VSI C accepts unknown __builtin_* calls as implicit external functions, so
+these link-only probes produce false positives.  Select the portable paths
+on OpenVMS.  This belongs in configure rather than config.h because Automake
+may regenerate config.h during the build.
+
+--- configure.orig	2026-03-30 11:42:14.000000000 +0000
++++ configure
+@@ -22190 +22190 @@
+-if ac_fn_c_try_link "$LINENO"
++if test "$host_os" != vms && ac_fn_c_try_link "$LINENO"
+@@ -22666 +22666 @@
+-if ac_fn_c_try_link "$LINENO"
++if test "$host_os" != vms && ac_fn_c_try_link "$LINENO"

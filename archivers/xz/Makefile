@@ -24,6 +24,19 @@ CONFLICTS=	lzma-[0-9]* lzma-utils-[0-9]* lzmalib-[0-9]*
 CONFIGURE_ARGS+=	--disable-assembler
 .endif
 
+.include "../../mk/bsd.prefs.mk"
+
+.if ${OPSYS} == "OpenVMS"
+# The VSI C compiler accepts unknown __builtin_* calls as implicit external
+# functions, which makes Autoconf's link-only probes produce false positives.
+# Use liblzma's portable byte-swap/alignment paths instead.  Threading is not
+# needed by the extractor bootstrap and avoids incomplete pthread interfaces.
+CONFIGURE_ARGS+=	--disable-assembler --disable-sandbox --disable-threads
+CONFIGURE_ENV+=		ac_cv_func_futimens=no
+CONFIGURE_ENV+=		ac_cv_func_getrlimit=no
+CONFIGURE_ENV+=		ac_cv_func_posix_fadvise=no
+.endif
+
 CONFIGURE_ENV.SunOS+=	ac_cv_have_decl_optreset=no
 CONFIGURE_ENV.SunOS+=	gl_cv_cc_visibility=no
 

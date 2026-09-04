@@ -11,7 +11,8 @@ include/jerror.h
 include/jmorecfg.h
 include/jpegint.h
 include/jpeglib.h
-lib/libjpeg.la
+${PLIST.libtool}lib/libjpeg.la
+${PLIST.static}lib/libjpeg.a
 lib/pkgconfig/libjpeg.pc
 man/man1/cjpeg.1
 man/man1/djpeg.1

@@ -3,4 +3,6 @@ $NetBSD: distinfo,v 1.43 2026/03/31 19:16:09 wiz Exp $
 BLAKE2s (xz-5.8.3.tar.bz2) = c7a28b97929d5f617b1ff283338295e424e83738f6c980f28b0d2b511079adcc
 SHA512 (xz-5.8.3.tar.bz2) = 4111da87631b8d3bd49d19ef6fc7afa0d71ec7194b34b372c123a45d1308324ddbfbf6c9d64d0cb8bb1334cd1ec54ca4108822cef0a9205b0221793f773e15c5
 Size (xz-5.8.3.tar.bz2) = 2028831 bytes
+SHA1 (patch-configure) = 8646aa64b95fa2f9c380dc0d9d02da798015cf81
+SHA1 (patch-src_xz_file__io.c) = bebdff7f0b43a87015f2d1f946e203a4001ec619
 SHA1 (patch-src_xz_Makefile.in) = b9360c7b2b34159028fb8b84339aa2faf3922287
