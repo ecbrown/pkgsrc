@@ -143,6 +143,8 @@ on the reference VSI OpenVMS x86-64 system:
 - `ispell-3.4.06nb3`: native images, the American English dictionary, DCL and
   GNV protocol modes, external filters, and transactional updates to files and
   personal dictionaries are validated.
+- `gzip-1.14nb2` and `xz-5.8.3`: command-line compression and decompression,
+  including clean compressed-data round trips, are validated.
 - `pkg_install-20260902nb1`, `libfetch-2.40nb7`, and `fetch-1.9nb4`: HTTPS
   downloads through the native VSI OpenSSL 3.0 shareable images, certificate
   verification, and the package-management client are validated.
@@ -159,6 +161,11 @@ on the reference VSI OpenVMS x86-64 system:
 - `gnuplot-6.0.5nb1`: the built-in line editor and portable `dumb`, SVG, and
   PostScript terminals are validated.  The initial OpenVMS package omits the
   X11, Cairo, GD, Qt, wxWidgets, Lua, AMOS, and external libcerf options.
+- `jpeg-9fnb1` and `png-1.6.58nb1`: static libraries, public headers, tools,
+  and the upstream image round-trip tests are validated.
+- `xli-1.17.0nb15`: JPEG and PNG identification and display through the native
+  DECwindows Xlib shareable image are validated.  MIT-SHM is disabled because
+  it is unavailable for the remote DECwindows display path.
 - `openai-c-cli-0.1`: a small C/OpenSSL Responses API client, stdin and JSON
   handling, CA verification, HTTP error decoding, and the live API endpoint
   are validated.  A valid API key is required for model output.
@@ -172,11 +179,16 @@ package:
 ```
 bash$ cd devel/ncurses && bmake clean package && bmake install
 bash$ cd ../../textproc/ispell && bmake clean package && bmake install
+bash$ cd ../../archivers/gzip && bmake clean package && bmake install
+bash$ cd ../xz && bmake clean package && bmake install
 bash$ cd ../../pkgtools/pkg_install && bmake clean package && bmake install
 bash$ cd ../../www/lynx && bmake clean package && bmake install
 bash$ cd ../../editors/emacs22 && bmake clean package && bmake install
 bash$ cd ../../databases/sqlite3 && bmake clean package && bmake install
 bash$ cd ../../graphics/gnuplot && bmake clean package && bmake install
+bash$ cd ../jpeg && bmake clean package && bmake install
+bash$ cd ../png && bmake clean package && bmake install
+bash$ cd ../xli && bmake clean package && bmake install
 bash$ cd ../../misc/openai-c-cli && bmake clean package && bmake install
 bash$ cd ../../editors/vim-share && bmake clean package && bmake install
 bash$ cd ../vim-motif && bmake clean package && bmake install
