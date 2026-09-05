@@ -10,9 +10,11 @@ BUILDLINK_ABI_DEPENDS.tiff+=	tiff>=4.7.0nb3
 BUILDLINK_PKGSRCDIR.tiff?=	../../graphics/tiff
 
 .include "../../devel/zlib/buildlink3.mk"
+.if ${OPSYS} != "OpenVMS"
 .include "../../archivers/xz/buildlink3.mk"
 .include "../../graphics/jbigkit/buildlink3.mk"
 .include "../../graphics/lerc/buildlink3.mk"
+.endif
 .include "../../mk/jpeg.buildlink3.mk"
 .endif # TIFF_BUILDLINK3_MK
 

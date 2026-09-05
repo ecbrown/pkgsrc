@@ -1,0 +1,7 @@
+@comment $NetBSD$
+include/tiff.h
+include/tiffconf.h
+include/tiffio.h
+include/tiffvers.h
+lib/libtiff.a
+lib/pkgconfig/libtiff-4.pc
